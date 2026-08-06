@@ -3,7 +3,7 @@
 - DEPENDÊNCIAS:
 ```bash
 sudo dnf update -y
-sudo dnf install -y git openvswitch net-tools python3 python3-setuptools telnet
+sudo dnf install -y git openvswitch net-tools python3 python3-setuptools telnet xterm
 ```
 
 - INSTALAÇÃO e SETUP MININET:

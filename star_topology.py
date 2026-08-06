@@ -28,7 +28,7 @@ def run():
 
     info("*** Creating network\n")
     # Instantiate the topology with 5 hosts
-    topo = StarTopo(n=5)
+    topo = StarTopo(n=3)
     
     # Create the network with the default controller
     net = Mininet(topo=topo, controller=Controller)
