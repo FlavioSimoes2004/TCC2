@@ -1,12 +1,12 @@
 # TCC2
 # INSTALAÇÕES e SETUP
+- DEPENDÊNCIAS:
 ```bash
 sudo dnf update -y
-sudo dnf install -y git openvswitch net-tools python3
-sudo dnf install -y telnet
+sudo dnf install -y git openvswitch net-tools python3 python3-setuptools telnet
 ```
 
-- SETUP MININET:
+- INSTALAÇÃO e SETUP MININET:
 ```bash
 git clone https://github.com/mininet/mininet
 cd mininet
