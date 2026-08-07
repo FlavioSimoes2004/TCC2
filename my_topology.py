@@ -28,7 +28,7 @@ def apply_db_rules(switch):
     """Verifica o banco de dados e adiciona regras de bloqueio no switch."""
     try:
         # ATENÇÃO: Ajuste o user e password do banco conforme necessário
-        connection = pymysql.connect(host='localhost', user='root', password='', database='tcc2')
+        connection = pymysql.connect(host='localhost', user='root', password='root', database='tcc2')
         cursor = connection.cursor()
         cursor.execute("SELECT ip_address FROM dispositivos WHERE status = 0")
         rejeitados = cursor.fetchall()
@@ -61,7 +61,7 @@ def run():
     setLogLevel('info')
 
     info("*** Creating network\n")
-    topo = StarTopo(n=2)
+    topo = StarTopo(n=3)
     
     # Switch OVSBridge para atuar como switch Standalone
     net = Mininet(topo=topo, switch=OVSBridge, controller=None)
