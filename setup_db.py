@@ -11,7 +11,7 @@ def setup_database(sql_file):
     # Conecta no MySQL (sem especificar banco inicialmente, pois o script vai criar/deletar o tcc2)
     # Lembre-se de alterar a senha caso o seu usuário root precise.
     try:
-        connection = pymysql.connect(host='localhost', user='root', password='')
+        connection = pymysql.connect(host='localhost', user='root', password='root')
         cursor = connection.cursor()
         
         with open(sql_file, 'r', encoding='utf-8') as f:
