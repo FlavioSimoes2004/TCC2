@@ -1,6 +1,6 @@
 from mininet.topo import Topo
 from mininet.net import Mininet
-from mininet.node import Controller
+from mininet.node import OVSBridge
 from mininet.cli import CLI
 from mininet.log import setLogLevel, info
 
@@ -28,10 +28,10 @@ def run():
 
     info("*** Creating network\n")
     # Instantiate the topology with 5 hosts
-    topo = StarTopo(n=3)
+    topo = StarTopo(n=2)
     
-    # Create the network with the default controller
-    net = Mininet(topo=topo, controller=Controller)
+    # Create the network with OVSBridge (acts as a standalone learning switch)
+    net = Mininet(topo=topo, switch=OVSBridge, controller=None)
 
     info("*** Starting network\n")
     net.start()
