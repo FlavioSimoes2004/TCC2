@@ -14,8 +14,8 @@ class StarTopo(Topo):
         """Build the topology.
         n: number of hosts
         """
-        # Add the central switch
-        switch = self.addSwitch('s1')
+        # Add the central switch (com failMode standalone como fallback)
+        switch = self.addSwitch('s1', failMode='standalone')
 
         # Add n hosts and connect them to the switch
         for i in range(1, n + 1):
@@ -33,16 +33,17 @@ def apply_db_rules(switch):
         cursor.execute("SELECT ip_address FROM dispositivos WHERE status = 0")
         rejeitados = cursor.fetchall()
         
-        # Limpa as regras de bloqueio anteriores (prioridade 100)
-        switch.cmd('ovs-ofctl del-flows s1 "table=0, priority=100"')
+        # Limpa APENAS as regras de bloqueio anteriores usando cookie (0x1)
+        # Se utilizarmos apenas del-flows sem strict, ele deleta os fluxos essenciais do controlador SDN, quebrando a rede.
+        switch.cmd('ovs-ofctl del-flows s1 "cookie=0x1/-1"')
         
-        # Adiciona regras de bloqueio para IPs rejeitados
+        # Adiciona regras de bloqueio para IPs rejeitados com cookie=0x1
         for row in rejeitados:
             ip = row[0]
             # Descarta pacotes com destino ao IP bloqueado
-            switch.cmd(f'ovs-ofctl add-flow s1 "ip,nw_dst={ip},priority=100,actions=drop"')
+            switch.cmd(f'ovs-ofctl add-flow s1 "cookie=0x1,ip,nw_dst={ip},priority=100,actions=drop"')
             # Opcional: descarta pacotes vindos do IP bloqueado
-            switch.cmd(f'ovs-ofctl add-flow s1 "ip,nw_src={ip},priority=100,actions=drop"')
+            switch.cmd(f'ovs-ofctl add-flow s1 "cookie=0x1,ip,nw_src={ip},priority=100,actions=drop"')
             
     except Exception as e:
         print(f"\n[Aviso] Falha ao verificar banco de dados: {e}")
@@ -64,6 +65,7 @@ def run():
     topo = StarTopo(n=3)
     
     # Switch OVSSwitch para atuar como switch SDN (com Controlador)
+    # O failMode='standalone' foi movido para a classe StarTopo no momento de criar o switch
     net = Mininet(topo=topo, switch=OVSSwitch, controller=Controller)
 
     # Adiciona NAT (Network Address Translation) à topologia
