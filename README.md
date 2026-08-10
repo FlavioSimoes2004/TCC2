@@ -21,16 +21,27 @@ sudo cp mnexec /usr/local/bin/
 ```
 
 # FUNCIONAMENTO
-```bash
--- PASSO 1: CRIAÇÃO DO BANCO
-sudo python3 setup_database.py
 
--- PASSO 2: EXECUÇÃO DA TOPOLOGIA
-sudo python3 my_topology.py
+1. CRIAÇÃO DO BANCO:
+    ```bash
+    sudo python3 setup_database.py
+    ```
 
--- PASSO 3: EXECUÇÃO DA INTERFACE
-xterm h1
-venv/bin/python app.py
+1. EXECUÇÃO CONTROLADOR:
+    ```bash
+    source venv/bin/activate
+    sudo python ryu/ryu_nac_controller.py
+    ```
 
--- PASSO 4: TESTE DE BLOQUEIO
-```
+1. EXECUÇÃO TOPOLOGIA:
+    ```bash
+    sudo python3 my_topology2.py
+    ```
+
+1. EXECUÇÃO DA INTERFACE:
+    ```bash
+    xterm h1
+    venv/bin/python app.py
+    ```
+
+1. TESTE DE BLOQUEIO:
