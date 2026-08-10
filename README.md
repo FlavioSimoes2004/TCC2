@@ -7,18 +7,24 @@ sudo dnf install -y git openvswitch net-tools python3 python3-setuptools telnet 
 sudo dnf install -y python3-PyMySQL
 ```
 
-- INSTALAÇÃO e SETUP MININET:
-```bash
-git clone https://github.com/mininet/mininet
-cd mininet
-mininet/util/install.sh
+- INSTALAÇÃO e SETUP:
+1. MININET
+    ```bash
+    git clone https://github.com/mininet/mininet
+    cd mininet
+    mininet/util/install.sh
 
-sudo python3 setup.py install
-sudo ln -s /usr/local/bin/mn /usr/bin/mn
+    sudo python3 setup.py install
+    sudo ln -s /usr/local/bin/mn venv/bin/
 
-sudo make mnexec
-sudo cp mnexec /usr/local/bin/
-```
+    sudo make mnexec
+    sudo cp mnexec venv/bin/
+    ```
+
+1. RYU CONTROLADOR (FEDORA)
+    ```bash
+    git clone https://github.com/faucetsdn/ryu
+    ```
 
 # FUNCIONAMENTO
 
