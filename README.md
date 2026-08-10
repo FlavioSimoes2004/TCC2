@@ -8,6 +8,13 @@ sudo dnf install -y python3-PyMySQL
 ```
 
 - INSTALAÇÃO e SETUP:
+1. VENV
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
+    ```
+
 1. MININET
     ```bash
     git clone https://github.com/mininet/mininet
@@ -23,6 +30,10 @@ sudo dnf install -y python3-PyMySQL
 1. RYU CONTROLADOR (FEDORA)
     ```bash
     git clone https://github.com/faucetsdn/ryu
+    cd ryu
+    # alterar funções do script ryu/hook.py para somente "pass"
+    venv/bin/python setup.py install
+    sudo ln -s /bin/ryu-manager venv/bin/
     ```
 
 # FUNCIONAMENTO

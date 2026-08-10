@@ -2,3 +2,6 @@
 ryu/
 mininet/
 openflow/
+
+# outros
+__pycache__/
