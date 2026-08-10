@@ -1,6 +1,7 @@
 from mininet.topo import Topo
 from mininet.net import Mininet
-from mininet.node import OVSSwitch, RemoteController, NAT
+from mininet.node import OVSSwitch, RemoteController
+from mininet.nodelib import NAT
 from mininet.cli import CLI
 from mininet.log import setLogLevel, info
 
