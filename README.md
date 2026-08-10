@@ -29,6 +29,8 @@ sudo dnf install -y python3-PyMySQL
 
 1. RYU CONTROLADOR (FEDORA)
     ```bash
+    sudo mkdir /etc/network
+    sudo touch /etc/network/interface
     git clone https://github.com/faucetsdn/ryu
     cd ryu
     # alterar funções do script ryu/hook.py para somente "pass"
