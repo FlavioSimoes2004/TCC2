@@ -11,8 +11,7 @@ sudo dnf install -y python3-PyMySQL
 1. MININET
     ```bash
     git clone https://github.com/mininet/mininet
-    cd mininet
-    mininet/util/install.sh
+    ./mininet/util/install.sh -fnpv
 
     sudo python3 setup.py install
     sudo ln -s /usr/local/bin/mn venv/bin/
