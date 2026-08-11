@@ -48,18 +48,19 @@ sudo dnf install -y python3-PyMySQL
 
 1. EXECUÇÃO CONTROLADOR:
     ```bash
-    source venv/bin/activate
-    sudo python ryu/ryu_nac_controller.py
+    # executar em um terminal separado
+    venv/bin/ryu-manager ryu/ryu_nac_controller.py
     ```
 
 1. EXECUÇÃO TOPOLOGIA:
     ```bash
-    sudo python3 my_topology2.py
+    # executar em outro terminal
+    sudo venv/bin/python my_topology2.py
     ```
 
-1. EXECUÇÃO DA INTERFACE:
+1. EXECUÇÃO DA CAPTIVE PORTAL:
     ```bash
-    xterm h1
+    xterm nat0
     venv/bin/python app.py
     ```
 
