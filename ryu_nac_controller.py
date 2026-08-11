@@ -7,6 +7,7 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
+from ryu.lib.packet import ipv4, arp
 from ryu.lib import hub
 
 class NacSwitch(app_manager.RyuApp):
@@ -16,6 +17,7 @@ class NacSwitch(app_manager.RyuApp):
         super(NacSwitch, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
         self.datapaths = {}
+        self.known_devices = set()
         # Inicia a thread de monitoramento do banco (Network Access Control)
         self.db_thread = hub.spawn(self.db_polling_loop)
 
@@ -30,6 +32,27 @@ class NacSwitch(app_manager.RyuApp):
             if datapath.id in self.datapaths:
                 self.logger.info('Switch desconectado: %016x', datapath.id)
                 del self.datapaths[datapath.id]
+
+    def _register_device_db(self, mac, ip):
+        """Insere o dispositivo no banco caso não exista."""
+        try:
+            connection = pymysql.connect(
+                host='localhost', 
+                user='root', 
+                password='root', 
+                database='tcc2'
+            )
+            with connection.cursor() as cursor:
+                sql = "INSERT IGNORE INTO dispositivos (mac_address, ip_address, status) VALUES (%s, %s, NULL)"
+                cursor.execute(sql, (mac, ip))
+                if cursor.rowcount > 0:
+                    self.logger.info("Novo dispositivo registrado no banco: MAC=%s, IP=%s", mac, ip)
+            connection.commit()
+        except Exception as e:
+            self.logger.error("Erro ao registrar dispositivo %s (%s): %s", mac, ip, e)
+        finally:
+            if 'connection' in locals() and connection.open:
+                connection.close()
 
     def db_polling_loop(self):
         """Verifica o banco a cada 5 segundos e atualiza regras."""
@@ -130,6 +153,23 @@ class NacSwitch(app_manager.RyuApp):
 
         dst = eth.dst
         src = eth.src
+        
+        # --- REGISTRO AUTOMÁTICO DE DISPOSITIVOS ---
+        ip_addr = None
+        if eth.ethertype == ether_types.ETH_TYPE_IP:
+            ip_pkt = pkt.get_protocol(ipv4.ipv4)
+            if ip_pkt:
+                ip_addr = ip_pkt.src
+        elif eth.ethertype == ether_types.ETH_TYPE_ARP:
+            arp_pkt = pkt.get_protocol(arp.arp)
+            if arp_pkt:
+                ip_addr = arp_pkt.src_ip
+
+        if ip_addr and (src, ip_addr) not in self.known_devices:
+            self.known_devices.add((src, ip_addr))
+            hub.spawn(self._register_device_db, src, ip_addr)
+        # -------------------------------------------
+
         dpid = datapath.id
 
         self.mac_to_port.setdefault(dpid, {})
