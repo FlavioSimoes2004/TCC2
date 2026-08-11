@@ -1,4 +1,5 @@
 import pymysql
+import socket
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
@@ -20,6 +21,8 @@ class NacSwitch(app_manager.RyuApp):
         self.known_devices = set()
         # Inicia a thread de monitoramento do banco (Network Access Control)
         self.db_thread = hub.spawn(self.db_polling_loop)
+        # Inicia a thread do Servidor TCP para receber status do script.sh
+        self.tcp_thread = hub.spawn(self.tcp_server_loop)
 
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, CONFIG_DISPATCHER])
     def _state_change_handler(self, ev):
@@ -50,6 +53,56 @@ class NacSwitch(app_manager.RyuApp):
             connection.commit()
         except Exception as e:
             self.logger.error("Erro ao registrar dispositivo %s (%s): %s", mac, ip, e)
+        finally:
+            if 'connection' in locals() and connection.open:
+                connection.close()
+
+    def tcp_server_loop(self):
+        """Servidor TCP escutando na porta 9999 para receber o status (1 ou 0) dos hosts."""
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(('0.0.0.0', 9999))
+        server.listen(5)
+        self.logger.info("Servidor TCP do Controlador Ryu escutando na porta 9999")
+        while True:
+            new_sock, address = server.accept()
+            hub.spawn(self.handle_tcp_client, new_sock, address)
+
+    def handle_tcp_client(self, sock, address):
+        """Processa a mensagem recebida de um host via TCP."""
+        client_ip = address[0]
+        try:
+            data = sock.recv(1024).decode('utf-8').strip()
+            if data in ('0', '1'):
+                status = int(data)
+                self.logger.info("Recebido status %d do host com IP %s", status, client_ip)
+                self._update_device_status_db(client_ip, status)
+            else:
+                self.logger.info("Dado inválido recebido do IP %s: %s", client_ip, data)
+        except Exception as e:
+            self.logger.error("Erro na comunicação TCP com %s: %s", client_ip, e)
+        finally:
+            sock.close()
+
+    def _update_device_status_db(self, ip, status):
+        """Atualiza a coluna status do dispositivo no banco."""
+        try:
+            connection = pymysql.connect(
+                host='localhost', 
+                user='root', 
+                password='root', 
+                database='tcc2'
+            )
+            with connection.cursor() as cursor:
+                sql = "UPDATE dispositivos SET status = %s WHERE ip_address = %s"
+                cursor.execute(sql, (status, ip))
+                if cursor.rowcount > 0:
+                    self.logger.info("Banco atualizado: IP=%s agora tem status=%d", ip, status)
+                else:
+                    self.logger.warning("Nenhum registro atualizado para o IP=%s. Talvez ele ainda não esteja cadastrado.", ip)
+            connection.commit()
+        except Exception as e:
+            self.logger.error("Erro ao atualizar status do dispositivo %s: %s", ip, e)
         finally:
             if 'connection' in locals() and connection.open:
                 connection.close()

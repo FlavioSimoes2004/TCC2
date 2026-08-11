@@ -14,11 +14,24 @@ dnf check-update --quiet > /dev/null 2>&1
 update_status=$?
 
 # Se o status for 0, o sistema está atualizado. Caso contrário, não está.
-if [ $seguro == true ] && [ $update_status -eq 0 ]; then
-    pass
+if [ "$seguro" = true ] && [ $update_status -eq 0 ]; then
+    echo "true - seguro e atualizado"
 else
-    seguro=false;
-    echo "false - update available"
+    seguro=false
+    echo "false - update available ou firewall inativo"
 fi
 
-echo "$seguro"
+# Descobre o IP do gateway padrão (que no Mininet com NAT leva ao namespace do Ryu)
+GATEWAY=$(ip route | awk '/default/ {print $3}')
+
+if [ -n "$GATEWAY" ]; then
+    if [ "$seguro" = true ]; then
+        echo "Enviando status SEGURO (1) para o controlador em $GATEWAY:9999"
+        echo "1" | nc -w 2 $GATEWAY 9999
+    else
+        echo "Enviando status INSEGURO (0) para o controlador em $GATEWAY:9999"
+        echo "0" | nc -w 2 $GATEWAY 9999
+    fi
+else
+    echo "Erro: Não foi possível encontrar o gateway padrão para contatar o Ryu."
+fi
