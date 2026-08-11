@@ -9,7 +9,7 @@ def home():
 
 @app.route('/download_script')
 def download_script():
-    file_path = '/home/flavio/Documents/TCC2/script.sh'
+    file_path = './script.sh'
     return send_file(file_path, as_attachment=True)
 
 if __name__ == '__main__':
