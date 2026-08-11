@@ -58,10 +58,14 @@ sudo dnf install -y python3-PyMySQL
     sudo venv/bin/python my_topology2.py
     ```
 
-1. EXECUÇÃO DA CAPTIVE PORTAL:
+1. EXECUÇÃO DO CAPTIVE PORTAL:
     ```bash
     xterm nat0
     venv/bin/python app.py
     ```
 
-1. TESTE DE BLOQUEIO:
+1. DOWNLOAD DO SCRIPT EM OUTRO HOST:
+    ```bash
+    xterm h1 # pode ser outro host tambem
+    curl -OJ http://10.0.0.4:5000/download_script
+    ```
