@@ -250,3 +250,25 @@ class NacSwitch(app_manager.RyuApp):
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                   in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
+
+def restart_table_dispositivos():
+    try:
+        connection = pymysql.connect(
+            host='localhost', 
+            user='root', 
+            password='root', 
+            database='tcc2'
+        )
+        with connection.cursor() as cursor:
+            sql = "truncate dispositivos"
+            cursor.execute(sql)
+        connection.commit()
+        return True
+    except Exception as e:
+        print("Erro ao reiniciar a tabela de dispositivos: ", e)
+        return False
+    finally:
+        if 'connection' in locals() and connection.open:
+            connection.close()
+
+restart_table_dispositivos()
