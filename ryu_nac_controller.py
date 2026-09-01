@@ -107,6 +107,11 @@ class NacSwitch(app_manager.RyuApp):
             if 'connection' in locals() and connection.open:
                 connection.close()
 
+    # Cookie usado para marcar os fluxos de bloqueio por MAC, permitindo
+    # removê-los seletivamente sem afetar as demais regras (miss-flow e
+    # regras de aprendizado do switch).
+    BLOCK_COOKIE = 0x4E4143  # "NAC" em hexadecimal, apenas como identificador
+
     def db_polling_loop(self):
         """Verifica o banco a cada 5 segundos e atualiza regras."""
         while True:
@@ -119,39 +124,42 @@ class NacSwitch(app_manager.RyuApp):
                     database='tcc2'
                 )
                 with connection.cursor() as cursor:
-                    cursor.execute("SELECT ip_address FROM dispositivos WHERE status = 0")
+                    cursor.execute("SELECT mac_address FROM dispositivos WHERE status = 0")
                     rejeitados = [row[0] for row in cursor.fetchall()]
                     
                     for dp_id, datapath in self.datapaths.items():
                         ofproto = datapath.ofproto
                         parser = datapath.ofproto_parser
                         
-                        # Remove bloqueios antigos (IP filters with Priority 100)
-                        match_clear = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP)
+                        # Remove bloqueios antigos (MAC filters marcados com BLOCK_COOKIE)
+                        match_clear = parser.OFPMatch()
                         mod_clear = parser.OFPFlowMod(
                             datapath=datapath,
                             command=ofproto.OFPFC_DELETE,
                             out_port=ofproto.OFPP_ANY,
                             out_group=ofproto.OFPG_ANY,
-                            priority=100,
+                            cookie=self.BLOCK_COOKIE,
+                            cookie_mask=0xFFFFFFFFFFFFFFFF,
                             match=match_clear
                         )
                         datapath.send_msg(mod_clear)
 
                         # Instala novos bloqueios
-                        for ip in rejeitados:
+                        for mac in rejeitados:
                             # Bloqueia destino
-                            match_dst = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_dst=ip)
+                            match_dst = parser.OFPMatch(eth_dst=mac)
                             inst = [parser.OFPInstructionActions(ofproto.OFPIT_CLEAR_ACTIONS, [])]
                             mod_dst = parser.OFPFlowMod(
-                                datapath=datapath, priority=100, match=match_dst, instructions=inst
+                                datapath=datapath, priority=100, match=match_dst,
+                                instructions=inst, cookie=self.BLOCK_COOKIE
                             )
                             datapath.send_msg(mod_dst)
 
                             # Bloqueia origem
-                            match_src = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_src=ip)
+                            match_src = parser.OFPMatch(eth_src=mac)
                             mod_src = parser.OFPFlowMod(
-                                datapath=datapath, priority=100, match=match_src, instructions=inst
+                                datapath=datapath, priority=100, match=match_src,
+                                instructions=inst, cookie=self.BLOCK_COOKIE
                             )
                             datapath.send_msg(mod_src)
                             
