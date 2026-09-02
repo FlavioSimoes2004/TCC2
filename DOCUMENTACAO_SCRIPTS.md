@@ -1,6 +1,8 @@
-# Documentação técnica: `ryu_nac_controller.py` e `my_topology2.py`
+# Documentação técnica: `my_topology2.py`, `ryu_nac_controller.py` e `script.sh`
 
-Este documento descreve o funcionamento dos dois scripts centrais do projeto: a topologia de rede simulada no Mininet (`my_topology2.py`) e o controlador SDN com controle de acesso à rede - NAC (`ryu_nac_controller.py`). O objetivo dos dois, em conjunto, é permitir que hosts "inseguros" (sem firewall ativo ou com atualizações pendentes) sejam automaticamente bloqueados na camada 2 da rede, reduzindo a superfície de propagação de vírus e worms.
+Este documento descreve o funcionamento dos três scripts centrais do projeto: a topologia de rede simulada no Mininet (`my_topology2.py`), o controlador SDN com controle de acesso à rede - NAC (`ryu_nac_controller.py`) - e o agente de verificação de postura de segurança que roda em cada host (`script.sh`). O objetivo dos três, em conjunto, é permitir que hosts "inseguros" (sem firewall ativo ou com atualizações pendentes) sejam automaticamente bloqueados na camada 2 da rede, reduzindo a superfície de propagação de vírus e worms.
+
+> Este documento também traz, na seção **"Histórico de alterações"**, um resumo do que foi modificado/adicionado no projeto ao longo do desenvolvimento (bloqueio por MAC em vez de IP, e criptografia TLS 1.3 na validação dos dispositivos).
 
 ## Visão geral da arquitetura
 
@@ -11,7 +13,8 @@ Este documento descreve o funcionamento dos dois scripts centrais do projeto: a 
                           │                              │
                           │  - Aprendizado L2 (switch)   │
                           │  - NAC: bloqueio por MAC     │
-                          │  - Servidor TCP (:9999)      │
+                          │  - Servidor TCP/TLS 1.3      │
+                          │    (:9999)                   │
                           └───────────┬─────────────────┘
                                       │ OpenFlow 1.3
                                       │
@@ -24,7 +27,9 @@ Este documento descreve o funcionamento dos dois scripts centrais do projeto: a 
                  ┌──▼──┐           ┌──▼──┐           ┌──▼──┐
                  │ h1  │           │ h2  │           │ h3  │   (+ nó NAT)
                  └─────┘           └─────┘           └─────┘
-                 roda script.sh -> envia status "0"/"1" para o controlador (porta 9999)
+                 roda script.sh -> envia status "0"/"1" para o controlador
+                 via TLS 1.3 (porta 9999), validando o certificado do
+                 controlador (certs/nac_controller.crt)
 
                           ┌────────────────────────────┐
                           │      Banco MySQL "tcc2"     │
@@ -34,7 +39,41 @@ Este documento descreve o funcionamento dos dois scripts centrais do projeto: a 
                           └────────────────────────────┘
 ```
 
-O `my_topology2.py` monta a rede simulada (switch + hosts + NAT) e aponta o switch para o controlador remoto. O `ryu_nac_controller.py` é esse controlador: além de agir como switch aprendiz (L2 learning switch) básico, ele mantém um cadastro de dispositivos em um banco MySQL e, periodicamente, instala regras OpenFlow para bloquear na origem e no destino qualquer MAC marcado como "rejeitado" (`status = 0`).
+O `my_topology2.py` monta a rede simulada (switch + hosts + NAT) e aponta o switch para o controlador remoto. O `ryu_nac_controller.py` é esse controlador: além de agir como switch aprendiz (L2 learning switch) básico, ele mantém um cadastro de dispositivos em um banco MySQL e, periodicamente, instala regras OpenFlow para bloquear na origem e no destino qualquer MAC marcado como "rejeitado" (`status = 0`). O `script.sh` é o agente que roda em cada host, avalia sua própria postura de segurança e reporta o resultado ao controlador de forma cifrada (TLS 1.3).
+
+---
+
+## Histórico de alterações
+
+Esta seção resume as duas mudanças mais recentes feitas no projeto em relação à versão original, e onde cada uma impacta o código.
+
+### 1. Bloqueio por endereço MAC em vez de IP
+
+**O que mudou:** o `db_polling_loop` (em `ryu_nac_controller.py`) passou a consultar `mac_address` (em vez de `ip_address`) na tabela `dispositivos`, e a instalar as regras OpenFlow de bloqueio usando `eth_dst`/`eth_src` (camada 2) em vez de `ipv4_dst`/`ipv4_src`. Isso faz o bloqueio valer para qualquer tipo de tráfego do host (IP, ARP, etc.), não só pacotes IPv4.
+
+**Por que foi necessário mudar também a limpeza das regras antigas:** a versão original usava `eth_type=ETH_TYPE_IP` como critério para apagar (`OFPFC_DELETE`) só as regras de bloqueio, sem afetar a regra "miss" (prioridade 0) e as regras de aprendizado do switch (prioridade 1). Sem esse campo em comum na versão por MAC, um `OFPMatch()` vazio no delete apagaria *todas* as regras do switch. A solução foi marcar cada regra de bloqueio com um `cookie` fixo (`BLOCK_COOKIE`, definido como atributo da classe `NacSwitch`) no momento de instalá-la, e usar `cookie` + `cookie_mask=0xFFFFFFFFFFFFFFFF` no `OFPFC_DELETE` para remover seletivamente só as regras marcadas, mesmo com `match` vazio.
+
+**Arquivos afetados:** `ryu_nac_controller.py` (método `db_polling_loop`, atributo `BLOCK_COOKIE`).
+
+### 2. Criptografia TLS 1.3 na validação do dispositivo (`script.sh` ↔ controlador)
+
+**O que mudou:** a comunicação que reporta o status de segurança de cada host (mensagem `"0"` ou `"1"` enviada à porta 9999 do controlador) deixou de ser texto plano sobre TCP puro (via `nc`) e passou a trafegar dentro de uma sessão TLS 1.3.
+
+- **`ryu_nac_controller.py`**:
+  - Novos atributos de classe `TLS_CERT_FILE` e `TLS_KEY_FILE`, apontando para `certs/nac_controller.crt` e `certs/nac_controller.key`.
+  - Novo método `_build_tls_context()`, que monta um `ssl.SSLContext` com `minimum_version = maximum_version = ssl.TLSVersion.TLSv1_3` (ou seja, aceita **somente** TLS 1.3) e carrega o certificado/chave do controlador.
+  - `tcp_server_loop` agora cria esse contexto TLS uma vez e o repassa para cada conexão.
+  - `handle_tcp_client` passou a receber o contexto TLS como parâmetro extra e envolve o socket recebido com `ssl_context.wrap_socket(sock, server_side=True)` antes de ler qualquer dado; falhas de handshake são capturadas separadamente (`except ssl.SSLError`) e logadas sem derrubar a thread.
+- **`script.sh`**: a nova função `enviar_status_tls()` substitui o antigo `echo "0"/"1" | nc -w 2 $GATEWAY 9999` por `openssl s_client -tls1_3 -CAfile certs/nac_controller.crt -verify_return_error`, validando a identidade do controlador (certificate pinning) antes de enviar o status. Se o certificado não estiver disponível localmente no host, o script ainda envia os dados cifrados em TLS 1.3, porém sem validar a identidade do controlador (`-verify 0`), avisando isso via `stderr`. Veja a seção "3. `script.sh`" abaixo para o detalhamento completo.
+- **`app.py`**: nova rota `/download_cert`, que serve `certs/nac_controller.crt` para os hosts baixarem o certificado público do controlador junto do `script.sh`.
+- **`certs/`** (novo diretório):
+  - `nac_controller.crt` - certificado autoassinado público do controlador (CN=`nac-controller`, SAN cobrindo `10.0.0.4` e `127.0.0.1`, validade de 10 anos).
+  - `nac_controller.key` - chave privada correspondente; **nunca deve ser distribuída** aos hosts (adicionada ao `.gitignore`).
+  - `generate_cert.sh` - script auxiliar para (re)gerar esse par de chaves.
+- **`.gitignore`**: adicionada a regra `certs/*.key`, para garantir que a chave privada nunca seja versionada.
+- **`README.md`**: adicionado o passo de geração do certificado (`./certs/generate_cert.sh`) e o download do certificado (`curl -OJ .../download_cert`) no fluxo de setup de um novo host.
+
+**Limitação conhecida:** a autenticação hoje é de mão única - o host valida a identidade do controlador (via o certificado), mas o controlador não autentica o host que está se conectando na porta 9999. Uma evolução possível seria TLS mútuo (mTLS), com um certificado por host, o que exigiria provisionar/distribuir uma chave por dispositivo.
 
 ---
 
@@ -169,16 +208,21 @@ Escuta eventos de mudança de estado da conexão OpenFlow (`EventOFPStateChange`
 
 Insere um novo dispositivo na tabela `dispositivos` com `status = NULL` (pendente), usando `INSERT IGNORE` - ou seja, se o MAC já existir (`uq_mac` é `UNIQUE`), a inserção é silenciosamente ignorada em vez de gerar erro. É chamada de forma assíncrona (`hub.spawn`) pelo `_packet_in_handler` sempre que um par `(mac, ip)` inédito é observado.
 
-#### `tcp_server_loop` / `handle_tcp_client`
+#### `_build_tls_context`, `tcp_server_loop` / `handle_tcp_client`
 
-Sobe um servidor TCP simples na porta `9999`, escutando em todas as interfaces (`0.0.0.0`). Para cada conexão recebida, delega o atendimento a uma nova green thread (`handle_tcp_client`), que:
+Sobe um servidor TCP na porta `9999`, escutando em todas as interfaces (`0.0.0.0`), com a conexão protegida por **TLS 1.3**:
 
-1. Lê até 1024 bytes e decodifica como texto.
-2. Se o conteúdo for exatamente `"0"` ou `"1"`, interpreta como o status de segurança daquele host (enviado pelo `script.sh`: `1` = seguro/atualizado e com firewall ativo, `0` = inseguro) e chama `_update_device_status_db(ip_do_cliente, status)`.
-3. Qualquer outro conteúdo é descartado e logado como inválido.
-4. Fecha o socket ao final (`finally`).
+- `_build_tls_context()` monta um `ssl.SSLContext` (`PROTOCOL_TLS_SERVER`) com `minimum_version = maximum_version = ssl.TLSVersion.TLSv1_3` - ou seja, o handshake só é aceito se o cliente também falar exatamente TLS 1.3 - e carrega o certificado/chave do controlador (`TLS_CERT_FILE`/`TLS_KEY_FILE`, em `certs/nac_controller.crt`/`certs/nac_controller.key`). Se esses arquivos não existirem, levanta `FileNotFoundError` (o controlador não sobe sem eles - eles são gerados por `certs/generate_cert.sh`).
+- `tcp_server_loop` cria esse contexto TLS uma única vez e, para cada conexão aceita, delega o atendimento a uma nova green thread (`handle_tcp_client`), passando também o contexto TLS.
+- `handle_tcp_client(sock, address, ssl_context)`:
+  1. Envolve o socket recebido em TLS com `ssl_context.wrap_socket(sock, server_side=True)`, realizando o handshake antes de ler qualquer dado.
+  2. Lê até 1024 bytes do canal já cifrado e decodifica como texto.
+  3. Se o conteúdo for exatamente `"0"` ou `"1"`, interpreta como o status de segurança daquele host (enviado pelo `script.sh`: `1` = seguro/atualizado e com firewall ativo, `0` = inseguro) e chama `_update_device_status_db(ip_do_cliente, status)`.
+  4. Qualquer outro conteúdo é descartado e logado como inválido.
+  5. Falhas de handshake TLS são capturadas separadamente (`except ssl.SSLError`) e logadas, sem derrubar a thread nem o controlador.
+  6. Fecha o socket (TLS ou bruto, o que estiver aberto) ao final (`finally`).
 
-É esse mecanismo que conecta o `script.sh` rodando em cada host ao controlador: o host descobre o gateway (nó NAT criado pelo `my_topology2.py`) e manda `"1"` ou `"0"` para `<gateway>:9999`.
+É esse mecanismo que conecta o `script.sh` rodando em cada host ao controlador: o host descobre o gateway (nó NAT criado pelo `my_topology2.py`), abre uma conexão TLS 1.3 validando o certificado do controlador (`certs/nac_controller.crt`) e envia `"1"` ou `"0"` para `<gateway>:9999`. Veja a seção "Histórico de alterações" e a seção "3. `script.sh`" para o detalhamento completo dessa mudança.
 
 #### `_update_device_status_db(ip, status)`
 
@@ -259,7 +303,7 @@ Essa função é chamada **no momento em que o módulo é carregado** (ou seja, 
 1. `ryu-manager ryu_nac_controller.py` é iniciado → `restart_table_dispositivos()` roda e limpa a tabela → o app é instanciado → duas threads sobem (`db_polling_loop`, `tcp_server_loop`).
 2. O switch `s1` (criado pelo `my_topology2.py`) se conecta ao controlador na porta 6653 → `_state_change_handler` registra o datapath → `switch_features_handler` instala a regra "miss".
 3. Um host manda um pacote (ex.: ARP de descoberta, ping) → cai no `_packet_in_handler` → o dispositivo é registrado no banco como pendente (`status = NULL`) → o pacote é encaminhado/floodado normalmente (dispositivos pendentes **não são bloqueados**, só os explicitamente marcados como `status = 0`).
-4. Em paralelo, cada host roda `script.sh`, que verifica firewall/atualizações e envia `"1"` ou `"0"` para `<gateway>:9999` → `tcp_server_loop` recebe → `_update_device_status_db` atualiza o `status` daquele IP no banco.
+4. Em paralelo, cada host roda `script.sh`, que verifica firewall/atualizações e envia `"1"` ou `"0"` via TLS 1.3 para `<gateway>:9999` → `tcp_server_loop`/`handle_tcp_client` fazem o handshake e recebem o status → `_update_device_status_db` atualiza o `status` daquele IP no banco.
 5. A cada 5 segundos, `db_polling_loop` relê a tabela, busca todos os MACs com `status = 0` e reinstala, em todos os switches conhecidos, regras de descarte por `eth_dst`/`eth_src` para esses MACs - efetivamente isolando esses hosts da rede em poucos segundos após serem marcados como inseguros.
 
 ### Como executar
@@ -281,3 +325,131 @@ sudo venv/bin/python my_topology2.py
 - `db_polling_loop` reinstala **todas** as regras de bloqueio a cada 5 segundos, mesmo que nada tenha mudado no banco; funciona bem na escala de uma topologia de teste, mas não é otimizado para redes grandes.
 - A janela de até 5 segundos entre um host ser marcado como inseguro e o bloqueio efetivamente entrar em vigor é o intervalo do `hub.sleep(5)` - pode ser ajustado conforme a necessidade de resposta do NAC.
 - `restart_table_dispositivos()` zera o cadastro a cada reinício do controlador; se for necessário manter o histórico entre execuções, essa chamada precisa ser removida ou condicionada.
+
+---
+
+## 3. `script.sh`
+
+### Objetivo
+
+Ser o "agente" que roda **dentro de cada host** da rede (não no controlador) e responde à pergunta "este dispositivo está seguro?". Ele verifica localmente duas condições básicas de higiene de segurança - firewall ativo e sistema atualizado - e reporta o resultado ao `ryu_nac_controller.py` via uma conexão TLS 1.3 na porta 9999, para que o NAC decida se aquele MAC deve ou não ser bloqueado.
+
+### Dependências
+
+- `bash`
+- `systemctl` (para checar o `firewalld`)
+- `dnf` (gerenciador de pacotes - o host de teste é Fedora, mesma distro do controlador)
+- `ip` (para descobrir a rota/gateway padrão)
+- `openssl` (cliente TLS - precisa suportar `-tls1_3`, isto é, OpenSSL 1.1.1 ou mais novo)
+- `timeout` (para limitar o tempo de espera pela conexão)
+
+### Como o host obtém o script
+
+O `script.sh` não é copiado manualmente: ele é baixado de um "portal cativo" simples servido pelo `app.py` (Flask, rodando no nó NAT, porta 5000):
+
+```bash
+curl -OJ http://10.0.0.4:5000/download_script   # baixa o script.sh
+curl -OJ http://10.0.0.4:5000/download_cert     # baixa o certificado público do controlador
+chmod +x script.sh
+./script.sh
+```
+
+O certificado (`nac_controller.crt`) é baixado à parte e precisa ficar **no mesmo diretório** do `script.sh`, pois é ele quem permite validar a identidade do controlador na conexão TLS (ver seção seguinte).
+
+### Passo a passo do script
+
+```bash
+seguro=true;
+
+if ! systemctl is-active --quiet firewalld; then
+    seguro=false;
+    echo "false - firewall not active"
+fi
+```
+
+1. Assume `seguro=true` por padrão (postura otimista, corrigida pelas checagens seguintes).
+2. Verifica se o serviço `firewalld` está ativo (`systemctl is-active --quiet`). Se não estiver ativo - **ou nem sequer estiver instalado**, já que `systemctl is-active` retorna código de saída diferente de zero em ambos os casos - marca `seguro=false` e loga o motivo. (Ou seja, "firewall não instalado" tem, na prática, o mesmo efeito que "firewall instalado e desativado": o host é considerado inseguro.)
+
+```bash
+dnf check-update --quiet > /dev/null 2>&1
+update_status=$?
+
+if [ "$seguro" = true ] && [ $update_status -eq 0 ]; then
+    echo "true - seguro e atualizado"
+else
+    seguro=false
+    echo "false - update available ou firewall inativo"
+fi
+```
+
+3. Roda `dnf check-update`, cujo código de saída indica se há atualizações pendentes: `0` = sistema já atualizado, `100` = existem atualizações disponíveis (qualquer outro valor indica erro na checagem, e é tratado como "não atualizado").
+4. Só considera o host `seguro` se **as duas condições** forem verdadeiras: firewall ativo **e** sistema atualizado (`update_status -eq 0`). Se qualquer uma falhar, `seguro` vira/permanece `false`.
+
+```bash
+GATEWAY=$(ip route | awk '/default/ {print $3}')
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CERT_FILE="$SCRIPT_DIR/nac_controller.crt"
+```
+
+5. Descobre o gateway padrão (`ip route`) - no Mininet, é o nó NAT criado por `net.addNAT()` em `my_topology2.py`, que dá acesso ao namespace de rede onde o controlador Ryu está escutando.
+6. Resolve o diretório onde o próprio `script.sh` está (`SCRIPT_DIR`) e monta o caminho esperado do certificado do controlador (`CERT_FILE`) - o mesmo diretório para onde `download_cert` baixa o `nac_controller.crt`.
+
+```bash
+enviar_status_tls() {
+    local status="$1"
+    ...
+    if [ -f "$CERT_FILE" ]; then
+        echo "$status" | timeout 5 openssl s_client             -connect "$GATEWAY:9999" -tls1_3             -CAfile "$CERT_FILE" -verify_return_error             -quiet -no_ign_eof > /dev/null 2>&1
+    else
+        echo "$status" | timeout 5 openssl s_client             -connect "$GATEWAY:9999" -tls1_3             -verify 0             -quiet -no_ign_eof > /dev/null 2>&1
+    fi
+}
+```
+
+7. `enviar_status_tls(status)` é a função que efetivamente reporta o resultado ao controlador, usando `openssl s_client` como um "cliente TLS de linha de comando" (o `nc` original não fala TLS):
+   - `-tls1_3` força a versão do protocolo (coerente com o `ryu_nac_controller.py`, que só aceita TLS 1.3 - se as versões não baterem, o handshake falha).
+   - **Caminho seguro** (`CERT_FILE` existe): usa `-CAfile "$CERT_FILE" -verify_return_error`, validando a cadeia do certificado apresentado pelo controlador contra o certificado esperado (na prática, um *certificate pinning*, já que o certificado é autoassinado). Se o controlador apresentar um certificado diferente (por exemplo, em um ataque de *man-in-the-middle*), o handshake falha e nada é enviado.
+   - **Caminho de contingência** (`CERT_FILE` ausente): ainda assim estabelece uma conexão TLS 1.3 (o tráfego continua cifrado), mas com `-verify 0`, ou seja, sem checar se o certificado é o do controlador legítimo; um aviso é impresso em `stderr` orientando a baixar o certificado.
+   - `timeout 5` limita a tentativa de conexão a 5 segundos (equivalente ao antigo `-w 2` do `nc`, só que aplicado ao processo inteiro).
+   - O status (`"0"` ou `"1"`) é enviado via `echo "$status" |`, exatamente como no `nc` original, só que agora dentro do túnel TLS.
+
+```bash
+if [ -n "$GATEWAY" ]; then
+    if [ "$seguro" = true ]; then
+        enviar_status_tls "1"
+    else
+        enviar_status_tls "0"
+    fi
+else
+    echo "Erro: Não foi possível encontrar o gateway padrão para contatar o Ryu."
+fi
+```
+
+8. Por fim, se um gateway foi encontrado, envia `"1"` (seguro) ou `"0"` (inseguro) de acordo com o resultado das checagens; caso contrário, apenas loga o erro (sem tentar se conectar a lugar nenhum).
+
+### O que acontece do lado do controlador
+
+Ao receber a conexão TLS na porta 9999, o `ryu_nac_controller.py`:
+
+1. Faz o handshake TLS 1.3 (`ssl_context.wrap_socket`, em `handle_tcp_client`).
+2. Lê o status enviado (`"0"` ou `"1"`).
+3. Chama `_update_device_status_db(ip_do_host, status)`, atualizando a coluna `status` da tabela `dispositivos` para aquele IP.
+4. No próximo ciclo do `db_polling_loop` (em até 5 segundos), se o status for `0`, o MAC correspondente àquele host passa a ser bloqueado por `eth_dst`/`eth_src` em todos os switches.
+
+### Como executar manualmente
+
+```bash
+xterm h1   # ou qualquer outro host da topologia
+curl -OJ http://10.0.0.4:5000/download_script
+curl -OJ http://10.0.0.4:5000/download_cert
+chmod +x script.sh
+./script.sh
+```
+
+### Observações e limitações
+
+- O script faz **uma verificação pontual** (roda uma vez e termina) - não há laço de repetição nem agendamento embutido. Para uma verificação contínua, seria necessário agendá-lo (por exemplo, via `cron` ou um *systemd timer*) no próprio host.
+- `dnf check-update` depende de acesso aos repositórios configurados; em um host isolado, sem rota de internet completa, essa checagem pode falhar sistematicamente e marcar o host como "não atualizado" mesmo que ele esteja íntegro - vale revisar esse comportamento conforme o ambiente de testes.
+- A autenticação TLS é de mão única: o host valida o certificado do controlador, mas o controlador não valida a identidade do host que está enviando o status (qualquer processo que fale TLS 1.3 e conecte na porta 9999 pode reportar um status). Ver limitação equivalente já registrada na seção "Histórico de alterações".
+- Se `openssl` não estiver instalado no host, `enviar_status_tls` falha e nenhum status é reportado (o dispositivo permanece com o último `status` já registrado no banco, ou `NULL`/pendente se for a primeira vez).
