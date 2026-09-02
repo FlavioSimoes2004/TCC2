@@ -1,5 +1,7 @@
 import pymysql
 import socket
+import ssl
+import os
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
@@ -13,6 +15,12 @@ from ryu.lib import hub
 
 class NacSwitch(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
+
+    # Certificado/chave TLS usados pelo servidor de status (porta 9999).
+    # Gerados por certs/generate_cert.sh - a chave privada NUNCA deve sair do controlador.
+    _CERTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'certs')
+    TLS_CERT_FILE = os.path.join(_CERTS_DIR, 'nac_controller.crt')
+    TLS_KEY_FILE = os.path.join(_CERTS_DIR, 'nac_controller.key')
 
     def __init__(self, *args, **kwargs):
         super(NacSwitch, self).__init__(*args, **kwargs)
@@ -57,32 +65,53 @@ class NacSwitch(app_manager.RyuApp):
             if 'connection' in locals() and connection.open:
                 connection.close()
 
+    def _build_tls_context(self):
+        """Monta o contexto TLS 1.3 (e somente 1.3) usado pelo servidor de status."""
+        if not (os.path.isfile(self.TLS_CERT_FILE) and os.path.isfile(self.TLS_KEY_FILE)):
+            raise FileNotFoundError(
+                "Certificado/chave TLS não encontrados em '{}'. "
+                "Gere-os primeiro com certs/generate_cert.sh".format(self._CERTS_DIR)
+            )
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_3
+        context.maximum_version = ssl.TLSVersion.TLSv1_3
+        context.load_cert_chain(certfile=self.TLS_CERT_FILE, keyfile=self.TLS_KEY_FILE)
+        return context
+
     def tcp_server_loop(self):
-        """Servidor TCP escutando na porta 9999 para receber o status (1 ou 0) dos hosts."""
+        """Servidor TCP/TLS 1.3 escutando na porta 9999 para receber o status (1 ou 0) dos hosts."""
+        ssl_context = self._build_tls_context()
+
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind(('0.0.0.0', 9999))
         server.listen(5)
-        self.logger.info("Servidor TCP do Controlador Ryu escutando na porta 9999")
+        self.logger.info("Servidor TCP (TLS 1.3) do Controlador Ryu escutando na porta 9999")
         while True:
             new_sock, address = server.accept()
-            hub.spawn(self.handle_tcp_client, new_sock, address)
+            hub.spawn(self.handle_tcp_client, new_sock, address, ssl_context)
 
-    def handle_tcp_client(self, sock, address):
-        """Processa a mensagem recebida de um host via TCP."""
+    def handle_tcp_client(self, sock, address, ssl_context):
+        """Realiza o handshake TLS 1.3 e processa a mensagem recebida de um host via TCP."""
         client_ip = address[0]
+        tls_sock = None
         try:
-            data = sock.recv(1024).decode('utf-8').strip()
+            # Envolve a conexão em TLS 1.3 antes de ler qualquer dado -
+            # a validação do dispositivo (status 0/1) passa a trafegar cifrada.
+            tls_sock = ssl_context.wrap_socket(sock, server_side=True)
+            data = tls_sock.recv(1024).decode('utf-8').strip()
             if data in ('0', '1'):
                 status = int(data)
-                self.logger.info("Recebido status %d do host com IP %s", status, client_ip)
+                self.logger.info("Recebido status %d do host com IP %s (via TLS 1.3)", status, client_ip)
                 self._update_device_status_db(client_ip, status)
             else:
                 self.logger.info("Dado inválido recebido do IP %s: %s", client_ip, data)
+        except ssl.SSLError as e:
+            self.logger.error("Falha no handshake TLS com %s: %s", client_ip, e)
         except Exception as e:
-            self.logger.error("Erro na comunicação TCP com %s: %s", client_ip, e)
+            self.logger.error("Erro na comunicação TCP/TLS com %s: %s", client_ip, e)
         finally:
-            sock.close()
+            (tls_sock or sock).close()
 
     def _update_device_status_db(self, ip, status):
         """Atualiza a coluna status do dispositivo no banco."""

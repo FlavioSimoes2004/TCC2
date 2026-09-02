@@ -46,6 +46,14 @@ sudo dnf install -y python3-PyMySQL
     sudo python3 setup_database.py
     ```
 
+1. CERTIFICADO TLS DO CONTROLADOR (necessário apenas na primeira vez, ou para regenerar):
+    ```bash
+    # gera certs/nac_controller.crt (público) e certs/nac_controller.key (privado, NUNCA distribuir)
+    ./certs/generate_cert.sh
+    ```
+    O servidor de status do controlador (porta 9999) agora exige TLS 1.3; sem esse
+    certificado o `ryu_nac_controller.py` não sobe.
+
 1. EXECUÇÃO CONTROLADOR:
     ```bash
     # executar em um terminal separado
@@ -68,4 +76,7 @@ sudo dnf install -y python3-PyMySQL
     ```bash
     xterm h1 # pode ser outro host tambem
     curl -OJ http://10.0.0.4:5000/download_script
+    curl -OJ http://10.0.0.4:5000/download_cert   # certificado usado para validar o controlador via TLS 1.3
+    chmod +x script.sh
+    ./script.sh
     ```

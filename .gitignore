@@ -5,3 +5,6 @@ openflow/
 
 # outros
 __pycache__/
+
+# Chave privada TLS do controlador (NUNCA deve ser versionada/distribuída)
+certs/*.key
