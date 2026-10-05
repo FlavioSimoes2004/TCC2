@@ -1,8 +1,8 @@
-# Documentação técnica: `my_topology2.py`, `ryu_nac_controller.py` e `script.sh`
+# Documentação técnica: `my_topology2.py`, `ryu_nac_controller.py`, `script.sh` e `experimentos/experimento.py`
 
 Este documento descreve o funcionamento dos três scripts centrais do projeto: a topologia de rede simulada no Mininet (`my_topology2.py`), o controlador SDN com controle de acesso à rede - NAC (`ryu_nac_controller.py`) - e o agente de verificação de postura de segurança que roda em cada host (`script.sh`). O objetivo dos três, em conjunto, é permitir que hosts "inseguros" (sem firewall ativo ou com atualizações pendentes) sejam automaticamente bloqueados na camada 2 da rede, reduzindo a superfície de propagação de vírus e worms.
 
-> Este documento também traz, na seção **"Histórico de alterações"**, um resumo do que foi modificado/adicionado no projeto ao longo do desenvolvimento (bloqueio por MAC em vez de IP, e criptografia TLS 1.3 na validação dos dispositivos).
+> Este documento também traz, na seção **"Histórico de alterações"**, um resumo do que foi modificado/adicionado no projeto ao longo do desenvolvimento (bloqueio por MAC em vez de IP, criptografia TLS 1.3 na validação dos dispositivos e automação de experimentos).
 
 ## Visão geral da arquitetura
 
@@ -45,7 +45,7 @@ O `my_topology2.py` monta a rede simulada (switch + hosts + NAT) e aponta o swit
 
 ## Histórico de alterações
 
-Esta seção resume as duas mudanças mais recentes feitas no projeto em relação à versão original, e onde cada uma impacta o código.
+Esta seção resume as mudanças mais recentes feitas no projeto em relação à versão original, e onde cada uma impacta o código.
 
 ### 1. Bloqueio por endereço MAC em vez de IP
 
@@ -74,6 +74,13 @@ Esta seção resume as duas mudanças mais recentes feitas no projeto em relaç�
 - **`README.md`**: adicionado o passo de geração do certificado (`./certs/generate_cert.sh`) e o download do certificado (`curl -OJ .../download_cert`) no fluxo de setup de um novo host.
 
 **Limitação conhecida:** a autenticação hoje é de mão única - o host valida a identidade do controlador (via o certificado), mas o controlador não autentica o host que está se conectando na porta 9999. Uma evolução possível seria TLS mútuo (mTLS), com um certificado por host, o que exigiria provisionar/distribuir uma chave por dispositivo.
+
+
+### 3. Automação de experimentos (`experimentos/experimento.py`)
+
+**O que mudou:** novo script que monta o ambiente, executa o experimento e coleta as métricas de avaliação da arquitetura, comparando o cenário **com** a arquitetura proposta (Ryu + MySQL + NAC) com o cenário **sem** ela (somente Mininet com hosts e switch). O usuário informa a quantidade de hosts e o cenário (interativamente ou por parâmetro). Métricas: delta Tc (tempo de autenticação), latência host ↔ autenticador, latência entre hosts e throughput dos hosts já aprovados. Veja a seção "4. `experimentos/experimento.py`".
+
+**Arquivos afetados:** `experimentos/experimento.py` (novo), `README.md` (dependência `iperf` e seção "AUTOMAÇÃO DE EXPERIMENTOS"), este documento. Nenhum dos scripts existentes (`ryu_nac_controller.py`, `my_topology2.py`, `script.sh`, `app.py`) foi alterado: o experimento reaproveita o `StarTopo` do `my_topology2.py`, executa o `ryu_nac_controller.py` como está e roda o próprio `script.sh` nos hosts.
 
 ---
 
@@ -453,3 +460,75 @@ chmod +x script.sh
 - `dnf check-update` depende de acesso aos repositórios configurados; em um host isolado, sem rota de internet completa, essa checagem pode falhar sistematicamente e marcar o host como "não atualizado" mesmo que ele esteja íntegro - vale revisar esse comportamento conforme o ambiente de testes.
 - A autenticação TLS é de mão única: o host valida o certificado do controlador, mas o controlador não valida a identidade do host que está enviando o status (qualquer processo que fale TLS 1.3 e conecte na porta 9999 pode reportar um status). Ver limitação equivalente já registrada na seção "Histórico de alterações".
 - Se `openssl` não estiver instalado no host, `enviar_status_tls` falha e nenhum status é reportado (o dispositivo permanece com o último `status` já registrado no banco, ou `NULL`/pendente se for a primeira vez).
+
+---
+
+## 4. `experimentos/experimento.py`
+
+### Objetivo
+
+Automatizar os experimentos de avaliação: subir a topologia com **N hosts**, com ou sem a arquitetura proposta, medir as métricas e gravar os resultados (CSV por host + resumo estatístico em JSON), podendo repetir o experimento várias vezes com o ambiente recriado do zero a cada repetição.
+
+| Cenário | O que sobe |
+|---|---|
+| `com` | Mininet (`StarTopo` de `my_topology2.py`, switch OVS em OpenFlow 1.3) + nó NAT `nat0` (gateway dos hosts) + controlador Ryu (`ryu_nac_controller.py`, iniciado pelo próprio experimento) + banco MySQL `tcc2` + NAC (`script.sh` reportando a postura via TLS 1.3 na porta 9999) |
+| `sem` | Somente Mininet: N hosts ligados a um switch `OVSBridge` em modo *standalone* (aprendiz L2 do próprio OVS). Sem controlador, sem banco, sem NAC e sem nó NAT |
+
+### Dependências
+
+- Root (Mininet): rodar com `sudo venv/bin/python ...`.
+- `iperf` (v2) para o throughput (`sudo dnf install iperf`). Sem ele, o experimento roda e o throughput fica como N/A.
+- Cenário `com`: as mesmas do controlador (`ryu-manager` em `venv/bin/`, MySQL com `root/root`, `openssl` e o certificado em `certs/`). Se o banco/tabela `dispositivos` não existir, é criado via `setup_db.setup_database('Banco.sql')`; se o certificado não existir, é gerado com `certs/generate_cert.sh`.
+- As portas 6653 e 9999 precisam estar livres (o experimento sobe o próprio controlador; encerre qualquer `ryu-manager` já em execução).
+
+### Como executar
+
+```bash
+# interativo: pergunta a quantidade de hosts e se o ambiente terá a arquitetura
+sudo venv/bin/python experimentos/experimento.py
+
+# por parâmetro
+sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura com --repeticoes 10
+```
+
+| Parâmetro | Padrão | Descrição |
+|---|---|---|
+| `--hosts N` | (pergunta) | quantidade de hosts |
+| `--arquitetura com\|sem` | (pergunta) | cenário do experimento |
+| `--repeticoes R` | 1 | repetições; a cada uma, rede, controlador e tabela `dispositivos` são recriados |
+| `--ping-count C` | 10 | pacotes ICMP por medição de latência (intervalo de 0,2 s) |
+| `--iperf-tempo T` | 10 | duração (s) de cada medição de throughput |
+| `--postura real\|aprovado` | `real` | `real` executa o `script.sh` (firewalld + `dnf check-update`); `aprovado` envia direto o status `1` pelo mesmo comando `openssl s_client -tls1_3 -CAfile ... -verify_return_error` usado pelo `script.sh`, isolando o tempo do protocolo de autenticação do tempo da checagem de postura |
+| `--modo-auth sequencial\|simultaneo` | `sequencial` | hosts se autenticam um por vez, ou todos ao mesmo tempo (carga simultânea no autenticador) |
+| `--timeout-auth S` | 120 | tempo máximo esperando a decisão de um host |
+| `--ryu-manager CAMINHO` | `venv/bin/ryu-manager` | executável do Ryu |
+| `--saida DIR` | `experimentos/resultados` | onde gravar os resultados |
+
+### Fluxo de cada repetição
+
+1. **(com)** Inicia `ryu-manager ryu_nac_controller.py` (log em `logs/ryu_rep<R>.log`) e aguarda as portas 6653 (OpenFlow) e 9999 (TLS) abrirem. Ao subir, o controlador zera a tabela `dispositivos` (`restart_table_dispositivos`).
+2. Cria a rede (`StarTopo` + `nat0` no cenário `com`; `StarTopoSemArquitetura` com `OVSBridge` no cenário `sem`) e espera o switch conectar.
+3. **(com) Latência host ↔ autenticador:** cada host faz `ping` no IP do `nat0` (gateway por onde o host alcança o servidor TLS do controlador). Esse tráfego também gera o `packet_in` que cadastra o host no banco; o experimento espera o cadastro antes de seguir.
+4. **(com) Delta Tc:** o `script.sh` e o `nac_controller.crt` são copiados para `arquivos_host/` (equivalente ao download pelo captive portal) e executados em cada host. Para cada host: `t0` = instante em que a autenticação é disparada; `t1` = primeiro instante em que o `status` daquele IP deixa de ser `NULL` no banco (consulta a cada 50 ms, com `autocommit` para não ler um *snapshot* antigo). **Delta Tc = t1 − t0**, ou seja, inclui checagem de postura (no modo `real`), handshake TLS 1.3, envio do status e gravação no banco. Hosts com `status = 1` são os **aprovados**. A saída do script de cada host fica em `logs/auth_<host>_rep<R>.log`.
+5. **(com)** Espera um ciclo do `db_polling_loop` (6 s) para os bloqueios dos rejeitados já estarem instalados.
+6. **Latência:** entre os hosts aprovados (no cenário `sem`, todos), cada host pinga o próximo da lista, em anel (h1→h2, h2→h3, …, hN→h1). Os primeiros pacotes entram na média de propósito: no cenário `com` eles incluem o custo do `packet_in` no controlador.
+7. **Throughput dos hosts aprovados:** `iperf -s` em todos os aprovados e, um par por vez, `iperf -c` de cada aprovado para o próximo (anel), durante `--iperf-tempo` segundos. Valor em Mbps.
+8. Derruba a rede e o controlador.
+
+Com menos de 2 hosts aprovados não há par para latência/throughput, e essas métricas ficam N/A. No cenário `sem` todos os hosts contam como aprovados e o delta Tc e a latência até o autenticador são N/A.
+
+### Resultados
+
+Gravados em `experimentos/resultados/<AAAAMMDD_HHMMSS>_<com|sem>_<N>h/` (o dono dos arquivos volta a ser o usuário que chamou o `sudo`):
+
+- `metricas_hosts.csv`: uma linha por host por repetição (`aprovado`, `status_nac`, `delta_tc_s`, `lat_autenticador_rtt_*_ms`, `lat_autenticador_perda_pct`, `lat_destino`, `lat_rtt_*_ms`, `lat_perda_pct`, `throughput_destino`, `throughput_mbps`).
+- `resumo.json`: parâmetros usados, hosts aprovados e, para cada métrica, amostras, média, desvio padrão, mínimo e máximo (a mesma tabela é impressa no terminal).
+- `logs/`: log do Ryu e saída da autenticação de cada host.
+- `arquivos_host/`: cópia do `script.sh` e do certificado usados pelos hosts.
+
+### Observações e limitações
+
+- No modo `--postura real`, o delta Tc é dominado pelo `dnf check-update` (acesso aos repositórios via NAT). Como os hosts do Mininet compartilham o sistema de arquivos e o `systemd` da máquina, a postura avaliada é a da própria máquina, e em `--modo-auth simultaneo` várias execuções do `dnf` concorrem pelo mesmo cache. Para medir o custo do protocolo de autenticação da arquitetura, use `--postura aprovado`.
+- Se a máquina tiver atualizações pendentes ou o `firewalld` desligado, no modo `real` todos os hosts são rejeitados e não há throughput/latência entre aprovados.
+- A resolução do delta Tc é de ~50 ms (intervalo de consulta ao banco).
+- Se o experimento for interrompido de forma abrupta, pode ser necessário limpar o Mininet com `sudo mn -c`.

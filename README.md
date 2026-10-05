@@ -3,7 +3,7 @@
 - DEPENDÊNCIAS:
 ```bash
 sudo dnf update -y
-sudo dnf install -y git openvswitch net-tools python3 python3-setuptools telnet xterm
+sudo dnf install -y git openvswitch net-tools python3 python3-setuptools telnet xterm iperf
 sudo dnf install -y python3-PyMySQL
 ```
 
@@ -80,3 +80,24 @@ sudo dnf install -y python3-PyMySQL
     chmod +x script.sh
     ./script.sh
     ```
+
+# AUTOMAÇÃO DE EXPERIMENTOS
+
+Script `experimentos/experimento.py`: pergunta a quantidade de hosts e se o ambiente
+terá ou não a arquitetura proposta, sobe tudo sozinho e coleta as métricas
+(delta Tc, latência host ↔ autenticador, latência entre hosts e throughput dos
+hosts aprovados). Não é preciso subir controlador/topologia manualmente antes.
+
+```bash
+# modo interativo (pergunta hosts e com/sem arquitetura)
+sudo venv/bin/python experimentos/experimento.py
+
+# ou passando tudo por parâmetro
+sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura com --repeticoes 10
+sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura sem --repeticoes 10
+```
+
+- `com`: Mininet + Ryu (`ryu_nac_controller.py`) + MySQL + NAC (`script.sh` via TLS 1.3).
+- `sem`: somente Mininet com os hosts e um switch standalone (sem controlador, banco e NAC).
+- Resultados em `experimentos/resultados/<data>_<com|sem>_<N>h/` (`metricas_hosts.csv`, `resumo.json`, `logs/`).
+- Opções e detalhes das métricas: seção "4. `experimentos/experimento.py`" do `DOCUMENTACAO_SCRIPTS.md`.

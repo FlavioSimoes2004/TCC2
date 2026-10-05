@@ -1,0 +1,33 @@
+/home/flavio/Documents/TCC/TCC2/venv/lib64/python3.14/site-packages/ryu/lib/hub.py:30: EventletDeprecationWarning: 
+Eventlet is deprecated. It is currently being maintained in bugfix mode, and
+we strongly recommend against using it for new projects.
+
+If you are already using Eventlet, we recommend migrating to a different
+framework.  For more detail see
+https://eventlet.readthedocs.io/en/latest/asyncio/migration.html
+
+  import eventlet
+2 RLock(s) were not greened, to fix this error make sure you run eventlet.monkey_patch() before importing any other modules.
+loading app ryu_nac_controller.py
+loading app ryu.controller.ofp_handler
+instantiating app ryu_nac_controller.py of NacSwitch
+instantiating app ryu.controller.ofp_handler of OFPHandler
+Servidor TCP (TLS 1.3) do Controlador Ryu escutando na porta 9999
+Falha no handshake TLS com 127.0.0.1: [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1082)
+Switch conectado: 0000000000000001
+Novo dispositivo registrado no banco: MAC=02:93:a3:aa:0b:b5, IP=10.0.0.6
+Novo dispositivo registrado no banco: MAC=42:60:65:57:ec:c5, IP=10.0.0.1
+Novo dispositivo registrado no banco: MAC=b2:1b:81:dc:13:4f, IP=10.0.0.2
+Novo dispositivo registrado no banco: MAC=ee:3b:4f:64:61:d6, IP=10.0.0.3
+Novo dispositivo registrado no banco: MAC=de:de:f1:41:ee:dc, IP=10.0.0.4
+Novo dispositivo registrado no banco: MAC=76:96:37:f5:c1:5d, IP=10.0.0.5
+Recebido status 0 do host com IP 10.0.0.1 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.1 agora tem status=0
+Recebido status 0 do host com IP 10.0.0.2 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.2 agora tem status=0
+Recebido status 0 do host com IP 10.0.0.3 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.3 agora tem status=0
+Recebido status 0 do host com IP 10.0.0.4 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.4 agora tem status=0
+Recebido status 0 do host com IP 10.0.0.5 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.5 agora tem status=0

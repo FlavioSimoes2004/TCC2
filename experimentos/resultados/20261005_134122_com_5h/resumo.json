@@ -1,0 +1,32 @@
+{
+  "parametros": {
+    "hosts": 5,
+    "arquitetura": "com",
+    "repeticoes": 10,
+    "ping_count": 10,
+    "iperf_tempo": 10,
+    "postura": "real",
+    "modo_auth": "sequencial",
+    "timeout_auth": 120
+  },
+  "hosts_aprovados": 0,
+  "hosts_total": 50,
+  "metricas": {
+    "delta_tc_s": {
+      "amostras": 50,
+      "media": 0.729229328360002,
+      "desvio_padrao": 0.1566348525501283,
+      "min": 0.6588273410000056,
+      "max": 1.7767773140001282
+    },
+    "lat_autenticador_rtt_avg_ms": {
+      "amostras": 50,
+      "media": 0.46118,
+      "desvio_padrao": 0.047382804941050426,
+      "min": 0.387,
+      "max": 0.664
+    },
+    "lat_rtt_avg_ms": null,
+    "throughput_mbps": null
+  }
+}
