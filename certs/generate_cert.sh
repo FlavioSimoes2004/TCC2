@@ -8,24 +8,33 @@
 # deve sair desta máquina - por isso está no .gitignore.
 #
 # Uso:
-#   ./certs/generate_cert.sh [IP_DO_GATEWAY]
+#   ./certs/generate_cert.sh [IP_DO_GATEWAY] [HASH]
 #
 # Se IP_DO_GATEWAY não for informado, usa 10.0.0.4 (padrão do nó NAT criado
 # por my_topology2.py, conforme documentado no README).
+# HASH é o algoritmo usado na assinatura do certificado: sha1, sha256 ou
+# sha512 (padrão: sha256).
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GATEWAY_IP="${1:-10.0.0.4}"
+HASH="${2:-sha256}"
+
+case "$HASH" in
+    sha1|sha256|sha512) ;;
+    *) echo "Hash inválido: $HASH (use sha1, sha256 ou sha512)" >&2; exit 1 ;;
+esac
 
 openssl req -x509 -newkey rsa:2048 -nodes \
     -keyout "$SCRIPT_DIR/nac_controller.key" \
     -out "$SCRIPT_DIR/nac_controller.crt" \
     -days 3650 \
+    -"$HASH" \
     -subj "/CN=nac-controller" \
     -addext "subjectAltName=DNS:nac-controller,IP:${GATEWAY_IP},IP:127.0.0.1"
 
 chmod 600 "$SCRIPT_DIR/nac_controller.key"
 
-echo "Certificado gerado em: $SCRIPT_DIR/nac_controller.crt"
+echo "Certificado gerado em: $SCRIPT_DIR/nac_controller.crt (assinatura: $HASH)"
 echo "Chave privada gerada em: $SCRIPT_DIR/nac_controller.key (mantenha em segredo)"

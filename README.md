@@ -50,6 +50,8 @@ sudo dnf install -y python3-PyMySQL
     ```bash
     # gera certs/nac_controller.crt (público) e certs/nac_controller.key (privado, NUNCA distribuir)
     ./certs/generate_cert.sh
+    # opcional: IP do gateway e hash da assinatura (sha1, sha256 ou sha512; padrão sha256)
+    ./certs/generate_cert.sh 10.0.0.4 sha512
     ```
     O servidor de status do controlador (porta 9999) agora exige TLS 1.3; sem esse
     certificado o `ryu_nac_controller.py` não sobe.
@@ -83,21 +85,24 @@ sudo dnf install -y python3-PyMySQL
 
 # AUTOMAÇÃO DE EXPERIMENTOS
 
-Script `experimentos/experimento.py`: pergunta a quantidade de hosts e se o ambiente
-terá ou não a arquitetura proposta, sobe tudo sozinho e coleta as métricas
+Script `experimentos/experimento.py`: pergunta a quantidade de hosts, se o ambiente
+terá ou não a arquitetura proposta e, com a arquitetura, o hash da criptografia
+(sha1, sha256 ou sha512); sobe tudo sozinho e coleta as métricas
 (delta Tc, latência host ↔ autenticador, latência entre hosts e throughput dos
 hosts aprovados). Não é preciso subir controlador/topologia manualmente antes.
 
 ```bash
-# modo interativo (pergunta hosts e com/sem arquitetura)
+# modo interativo (pergunta hosts, com/sem arquitetura e o hash)
 sudo venv/bin/python experimentos/experimento.py
 
 # ou passando tudo por parâmetro
-sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura com --repeticoes 10
+sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura com --hash sha256 --repeticoes 10
 sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura sem --repeticoes 10
 ```
 
 - `com`: Mininet + Ryu (`ryu_nac_controller.py`) + MySQL + NAC (`script.sh` via TLS 1.3).
+  O hash escolhido (`--hash`) assina o certificado do controlador e o handshake TLS 1.3
+  (com `sha1`, só o certificado: o TLS 1.3 não aceita SHA-1 no handshake).
 - `sem`: somente Mininet com os hosts e um switch standalone (sem controlador, banco e NAC).
-- Resultados em `experimentos/resultados/<data>_<com|sem>_<N>h/` (`metricas_hosts.csv`, `resumo.json`, `logs/`).
+- Resultados em `experimentos/resultados/<data>_<com|sem>_<N>h[_<hash>]/` (`metricas_hosts.csv`, `resumo.json`, `logs/`).
 - Opções e detalhes das métricas: seção "4. `experimentos/experimento.py`" do `DOCUMENTACAO_SCRIPTS.md`.

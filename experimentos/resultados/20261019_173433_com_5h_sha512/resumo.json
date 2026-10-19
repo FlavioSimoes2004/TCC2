@@ -1,0 +1,39 @@
+{
+  "parametros": {
+    "hosts": 5,
+    "arquitetura": "com",
+    "repeticoes": 1,
+    "ping_count": 10,
+    "iperf_tempo": 10,
+    "postura": "real",
+    "hash": "sha512",
+    "modo_auth": "sequencial",
+    "timeout_auth": 120
+  },
+  "hosts_aprovados": 0,
+  "hosts_total": 5,
+  "criptografia": {
+    "hash": "sha512",
+    "cert_assinatura": "sha512WithRSAEncryption",
+    "tls_hash_handshake": "sha512",
+    "tls_cifra": "TLS_AES_256_GCM_SHA384"
+  },
+  "metricas": {
+    "delta_tc_s": {
+      "amostras": 5,
+      "media": 1.1009929702000136,
+      "desvio_padrao": 0.3837248297576886,
+      "min": 0.9152837669998917,
+      "max": 1.7862364150000758
+    },
+    "lat_autenticador_rtt_avg_ms": {
+      "amostras": 5,
+      "media": 0.6335999999999999,
+      "desvio_padrao": 0.07107601564522312,
+      "min": 0.573,
+      "max": 0.755
+    },
+    "lat_rtt_avg_ms": null,
+    "throughput_mbps": null
+  }
+}

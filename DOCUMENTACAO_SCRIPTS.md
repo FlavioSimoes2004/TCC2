@@ -82,6 +82,20 @@ Esta seção resume as mudanças mais recentes feitas no projeto em relação à
 
 **Arquivos afetados:** `experimentos/experimento.py` (novo), `README.md` (dependência `iperf` e seção "AUTOMAÇÃO DE EXPERIMENTOS"), este documento. Nenhum dos scripts existentes (`ryu_nac_controller.py`, `my_topology2.py`, `script.sh`, `app.py`) foi alterado: o experimento reaproveita o `StarTopo` do `my_topology2.py`, executa o `ryu_nac_controller.py` como está e roda o próprio `script.sh` nos hosts.
 
+
+### 4. Escolha do hash da criptografia na automação de experimentos
+
+**O que mudou:** no cenário `com`, o `experimentos/experimento.py` passou a pedir o hash (`sha1`, `sha256` ou `sha512`; parâmetro `--hash`) e a usá-lo nos dois pontos onde o projeto usava SHA-256 por padrão do OpenSSL:
+
+- **Assinatura do certificado do controlador:** o `certs/generate_cert.sh` ganhou um 2º parâmetro opcional, `HASH` (padrão `sha256`, que mantém o comportamento anterior), repassado como `-sha1`/`-sha256`/`-sha512` ao `openssl req`. O experimento guarda o par original como `certs/nac_controller.orig.crt`/`.orig.key`, gera um par novo com o hash escolhido e devolve o original ao terminar (mesmo em caso de erro).
+- **Assinatura do handshake TLS 1.3 (CertificateVerify):** o host exige o algoritmo `rsa_pss_rsae_sha256` ou `rsa_pss_rsae_sha512` com `openssl s_client -sigalgs`. O `script.sh` lê esse valor da variável de ambiente opcional `NAC_SIGALGS` (sem ela, nada muda); no modo `--postura aprovado` o próprio experimento passa o `-sigalgs`.
+
+**Por que SHA-1 só vale para o certificado:** o TLS 1.3 (RFC 8446) proíbe SHA-1 na assinatura do handshake. Com `--hash sha1`, o certificado é assinado com SHA-1 e o handshake continua no padrão do OpenSSL (SHA-256). O hash das suítes de cifra do TLS 1.3 (HKDF) também não muda: só existem suítes com SHA-256 e SHA-384, e quem escolhe é a negociação do OpenSSL.
+
+**Registro nos resultados:** antes de autenticar os hosts, o experimento faz um handshake de conferência (sem enviar status) e grava em cada linha do CSV e no `resumo.json` o hash escolhido, a assinatura real do certificado (`cert_assinatura`), o hash usado no handshake (`tls_hash_handshake`) e a suíte negociada (`tls_cifra`). Como esse handshake não envia `0`/`1`, o controlador registra no log uma linha "Dado inválido", sem alterar o banco.
+
+**Arquivos afetados:** `experimentos/experimento.py`, `certs/generate_cert.sh`, `script.sh`, `README.md` e este documento. `ryu_nac_controller.py` não mudou: ele carrega o certificado que estiver em `certs/`, e o algoritmo do handshake é pedido pelo host.
+
 ---
 
 ## 1. `my_topology2.py`
@@ -416,6 +430,7 @@ enviar_status_tls() {
 
 7. `enviar_status_tls(status)` é a função que efetivamente reporta o resultado ao controlador, usando `openssl s_client` como um "cliente TLS de linha de comando" (o `nc` original não fala TLS):
    - `-tls1_3` força a versão do protocolo (coerente com o `ryu_nac_controller.py`, que só aceita TLS 1.3 - se as versões não baterem, o handshake falha).
+   - Se a variável de ambiente `NAC_SIGALGS` estiver definida (ex.: `rsa_pss_rsae_sha512`), o script acrescenta `-sigalgs "$NAC_SIGALGS"`, obrigando o controlador a assinar o handshake com esse hash. Sem a variável, vale o padrão do OpenSSL (SHA-256). É assim que a automação de experimentos aplica o `--hash` escolhido.
    - **Caminho seguro** (`CERT_FILE` existe): usa `-CAfile "$CERT_FILE" -verify_return_error`, validando a cadeia do certificado apresentado pelo controlador contra o certificado esperado (na prática, um *certificate pinning*, já que o certificado é autoassinado). Se o controlador apresentar um certificado diferente (por exemplo, em um ataque de *man-in-the-middle*), o handshake falha e nada é enviado.
    - **Caminho de contingência** (`CERT_FILE` ausente): ainda assim estabelece uma conexão TLS 1.3 (o tráfego continua cifrado), mas com `-verify 0`, ou seja, sem checar se o certificado é o do controlador legítimo; um aviso é impresso em `stderr` orientando a baixar o certificado.
    - `timeout 5` limita a tentativa de conexão a 5 segundos (equivalente ao antigo `-w 2` do `nc`, só que aplicado ao processo inteiro).
@@ -498,6 +513,7 @@ sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura com --r
 | `--repeticoes R` | 1 | repetições; a cada uma, rede, controlador e tabela `dispositivos` são recriados |
 | `--ping-count C` | 10 | pacotes ICMP por medição de latência (intervalo de 0,2 s) |
 | `--iperf-tempo T` | 10 | duração (s) de cada medição de throughput |
+| `--hash sha1\|sha256\|sha512` | (pergunta, só no `com`) | hash da assinatura do certificado do controlador e do handshake TLS 1.3 (`-sigalgs rsa_pss_rsae_<hash>`). Com `sha1`, só o certificado muda (o TLS 1.3 não aceita SHA-1 no handshake). Ver item 4 do "Histórico de alterações" |
 | `--postura real\|aprovado` | `real` | `real` executa o `script.sh` (firewalld + `dnf check-update`); `aprovado` envia direto o status `1` pelo mesmo comando `openssl s_client -tls1_3 -CAfile ... -verify_return_error` usado pelo `script.sh`, isolando o tempo do protocolo de autenticação do tempo da checagem de postura |
 | `--modo-auth sequencial\|simultaneo` | `sequencial` | hosts se autenticam um por vez, ou todos ao mesmo tempo (carga simultânea no autenticador) |
 | `--timeout-auth S` | 120 | tempo máximo esperando a decisão de um host |
@@ -506,10 +522,11 @@ sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura com --r
 
 ### Fluxo de cada repetição
 
+0. **(com, uma vez por execução)** Guarda o certificado original e gera `certs/nac_controller.crt`/`.key` assinados com o `--hash` escolhido; o original volta no fim.
 1. **(com)** Inicia `ryu-manager ryu_nac_controller.py` (log em `logs/ryu_rep<R>.log`) e aguarda as portas 6653 (OpenFlow) e 9999 (TLS) abrirem. Ao subir, o controlador zera a tabela `dispositivos` (`restart_table_dispositivos`).
 2. Cria a rede (`StarTopo` + `nat0` no cenário `com`; `StarTopoSemArquitetura` com `OVSBridge` no cenário `sem`) e espera o switch conectar.
 3. **(com) Latência host ↔ autenticador:** cada host faz `ping` no IP do `nat0` (gateway por onde o host alcança o servidor TLS do controlador). Esse tráfego também gera o `packet_in` que cadastra o host no banco; o experimento espera o cadastro antes de seguir.
-4. **(com) Delta Tc:** o `script.sh` e o `nac_controller.crt` são copiados para `arquivos_host/` (equivalente ao download pelo captive portal) e executados em cada host. Para cada host: `t0` = instante em que a autenticação é disparada; `t1` = primeiro instante em que o `status` daquele IP deixa de ser `NULL` no banco (consulta a cada 50 ms, com `autocommit` para não ler um *snapshot* antigo). **Delta Tc = t1 − t0**, ou seja, inclui checagem de postura (no modo `real`), handshake TLS 1.3, envio do status e gravação no banco. Hosts com `status = 1` são os **aprovados**. A saída do script de cada host fica em `logs/auth_<host>_rep<R>.log`.
+4. **(com) Delta Tc:** o `script.sh` e o `nac_controller.crt` são copiados para `arquivos_host/` (equivalente ao download pelo captive portal). Um handshake de conferência a partir do primeiro host registra o que foi negociado (assinatura do certificado, hash do handshake e suíte). Depois, a autenticação é executada em cada host, com `NAC_SIGALGS` definido conforme o `--hash`. Para cada host: `t0` = instante em que a autenticação é disparada; `t1` = primeiro instante em que o `status` daquele IP deixa de ser `NULL` no banco (consulta a cada 50 ms, com `autocommit` para não ler um *snapshot* antigo). **Delta Tc = t1 − t0**, ou seja, inclui checagem de postura (no modo `real`), handshake TLS 1.3, envio do status e gravação no banco. Hosts com `status = 1` são os **aprovados**. A saída do script de cada host fica em `logs/auth_<host>_rep<R>.log`.
 5. **(com)** Espera um ciclo do `db_polling_loop` (6 s) para os bloqueios dos rejeitados já estarem instalados.
 6. **Latência:** entre os hosts aprovados (no cenário `sem`, todos), cada host pinga o próximo da lista, em anel (h1→h2, h2→h3, …, hN→h1). Os primeiros pacotes entram na média de propósito: no cenário `com` eles incluem o custo do `packet_in` no controlador.
 7. **Throughput dos hosts aprovados:** `iperf -s` em todos os aprovados e, um par por vez, `iperf -c` de cada aprovado para o próximo (anel), durante `--iperf-tempo` segundos. Valor em Mbps.
@@ -519,10 +536,10 @@ Com menos de 2 hosts aprovados não há par para latência/throughput, e essas m
 
 ### Resultados
 
-Gravados em `experimentos/resultados/<AAAAMMDD_HHMMSS>_<com|sem>_<N>h/` (o dono dos arquivos volta a ser o usuário que chamou o `sudo`):
+Gravados em `experimentos/resultados/<AAAAMMDD_HHMMSS>_<com|sem>_<N>h[_<hash>]/` (o dono dos arquivos volta a ser o usuário que chamou o `sudo`):
 
-- `metricas_hosts.csv`: uma linha por host por repetição (`aprovado`, `status_nac`, `delta_tc_s`, `lat_autenticador_rtt_*_ms`, `lat_autenticador_perda_pct`, `lat_destino`, `lat_rtt_*_ms`, `lat_perda_pct`, `throughput_destino`, `throughput_mbps`).
-- `resumo.json`: parâmetros usados, hosts aprovados e, para cada métrica, amostras, média, desvio padrão, mínimo e máximo (a mesma tabela é impressa no terminal).
+- `metricas_hosts.csv`: uma linha por host por repetição (`hash`, `cert_assinatura`, `tls_hash_handshake`, `tls_cifra`, `aprovado`, `status_nac`, `delta_tc_s`, `lat_autenticador_rtt_*_ms`, `lat_autenticador_perda_pct`, `lat_destino`, `lat_rtt_*_ms`, `lat_perda_pct`, `throughput_destino`, `throughput_mbps`).
+- `resumo.json`: parâmetros usados, criptografia usada (no cenário `com`), hosts aprovados e, para cada métrica, amostras, média, desvio padrão, mínimo e máximo (a mesma tabela é impressa no terminal).
 - `logs/`: log do Ryu e saída da autenticação de cada host.
 - `arquivos_host/`: cópia do `script.sh` e do certificado usados pelos hosts.
 
@@ -531,4 +548,4 @@ Gravados em `experimentos/resultados/<AAAAMMDD_HHMMSS>_<com|sem>_<N>h/` (o dono 
 - No modo `--postura real`, o delta Tc é dominado pelo `dnf check-update` (acesso aos repositórios via NAT). Como os hosts do Mininet compartilham o sistema de arquivos e o `systemd` da máquina, a postura avaliada é a da própria máquina, e em `--modo-auth simultaneo` várias execuções do `dnf` concorrem pelo mesmo cache. Para medir o custo do protocolo de autenticação da arquitetura, use `--postura aprovado`.
 - Se a máquina tiver atualizações pendentes ou o `firewalld` desligado, no modo `real` todos os hosts são rejeitados e não há throughput/latência entre aprovados.
 - A resolução do delta Tc é de ~50 ms (intervalo de consulta ao banco).
-- Se o experimento for interrompido de forma abrupta, pode ser necessário limpar o Mininet com `sudo mn -c`.
+- Se o experimento for interrompido de forma abrupta, pode ser necessário limpar o Mininet com `sudo mn -c`. Se sobrar `certs/nac_controller.orig.crt`/`.orig.key`, o certificado original não foi devolvido: a próxima execução do experimento o restaura automaticamente (ou renomeie os arquivos de volta à mão).

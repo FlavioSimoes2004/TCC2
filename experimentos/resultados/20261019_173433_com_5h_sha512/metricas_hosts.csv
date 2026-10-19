@@ -1,0 +1,6 @@
+repeticao,arquitetura,n_hosts,hash,cert_assinatura,tls_hash_handshake,tls_cifra,host,ip,aprovado,status_nac,delta_tc_s,lat_autenticador_rtt_avg_ms,lat_autenticador_rtt_min_ms,lat_autenticador_rtt_max_ms,lat_autenticador_rtt_mdev_ms,lat_autenticador_perda_pct,lat_destino,lat_rtt_avg_ms,lat_rtt_min_ms,lat_rtt_max_ms,lat_rtt_mdev_ms,lat_perda_pct,throughput_destino,throughput_mbps
+1,com,5,sha512,sha512WithRSAEncryption,sha512,TLS_AES_256_GCM_SHA384,h1,10.0.0.1,False,0,1.7862364150000758,0.755,0.052,6.742,1.996,0.0,,,,,,,,
+1,com,5,sha512,sha512WithRSAEncryption,sha512,TLS_AES_256_GCM_SHA384,h2,10.0.0.2,False,0,0.9686727519999749,0.573,0.037,5.058,1.496,0.0,,,,,,,,
+1,com,5,sha512,sha512WithRSAEncryption,sha512,TLS_AES_256_GCM_SHA384,h3,10.0.0.3,False,0,0.9180118419999417,0.628,0.039,5.514,1.629,0.0,,,,,,,,
+1,com,5,sha512,sha512WithRSAEncryption,sha512,TLS_AES_256_GCM_SHA384,h4,10.0.0.4,False,0,0.9152837669998917,0.617,0.051,5.286,1.557,0.0,,,,,,,,
+1,com,5,sha512,sha512WithRSAEncryption,sha512,TLS_AES_256_GCM_SHA384,h5,10.0.0.5,False,0,0.9167600750001839,0.595,0.052,4.997,1.471,0.0,,,,,,,,

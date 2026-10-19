@@ -23,6 +23,12 @@ Métricas coletadas (por host e por repetição):
 No cenário "sem", todos os hosts são considerados aprovados e as métricas de
 autenticação (delta_tc e latência até o autenticador) não se aplicam (N/A).
 
+No cenário "com", o usuário também escolhe o hash (sha1, sha256 ou sha512)
+usado onde o projeto usa SHA-256 por padrão: a assinatura do certificado do
+controlador e a assinatura do handshake TLS 1.3. O TLS 1.3 não permite SHA-1
+no handshake; com sha1, só o certificado muda e o handshake segue no padrão
+do OpenSSL (SHA-256).
+
 Uso (precisa de root por causa do Mininet):
     sudo venv/bin/python experimentos/experimento.py
     sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura com
@@ -63,6 +69,18 @@ NAC_POLLING_ESPERA_S = 6
 
 CERT_FILE = os.path.join(PROJECT_DIR, 'certs', 'nac_controller.crt')
 KEY_FILE = os.path.join(PROJECT_DIR, 'certs', 'nac_controller.key')
+# Cópia do par original do projeto enquanto o experimento usa o certificado
+# gerado com o hash escolhido (*.key continua coberto pelo .gitignore).
+CERT_BACKUP = os.path.join(PROJECT_DIR, 'certs', 'nac_controller.orig.crt')
+KEY_BACKUP = os.path.join(PROJECT_DIR, 'certs', 'nac_controller.orig.key')
+
+# Hash escolhido -> algoritmo de assinatura exigido no handshake TLS 1.3
+# (None = padrão do OpenSSL, já que o TLS 1.3 não aceita SHA-1 no handshake).
+HASHES = {
+    'sha1': None,
+    'sha256': 'rsa_pss_rsae_sha256',
+    'sha512': 'rsa_pss_rsae_sha512',
+}
 
 
 class StarTopoSemArquitetura(Topo):
@@ -94,6 +112,8 @@ def parse_args():
                         help='"real" executa o script.sh (firewalld + dnf check-update); '
                              '"aprovado" envia direto o status 1 pelo mesmo canal TLS 1.3, '
                              'isolando o tempo do protocolo de autenticação')
+    parser.add_argument('--hash', choices=list(HASHES),
+                        help='(cenário "com") hash da assinatura do certificado e do handshake TLS 1.3')
     parser.add_argument('--modo-auth', choices=['sequencial', 'simultaneo'], default='sequencial',
                         help='hosts se autenticam um por vez ou todos ao mesmo tempo')
     parser.add_argument('--timeout-auth', type=float, default=120,
@@ -117,6 +137,12 @@ def perguntar_parametros(args):
             args.arquitetura = 'com'
         elif resp in ('n', 'nao', 'não', 'sem'):
             args.arquitetura = 'sem'
+    if args.arquitetura == 'sem':
+        args.hash = None  # sem controlador não há TLS nem certificado
+    while args.arquitetura == 'com' and args.hash is None:
+        resp = input(f"Hash da criptografia [{'/'.join(HASHES)}]: ").strip().lower()
+        if resp in HASHES:
+            args.hash = resp
     if args.hosts < 2:
         log('AVISO: com menos de 2 hosts não é possível medir latência/throughput entre hosts.')
 
@@ -161,6 +187,29 @@ def garantir_certificado(gateway_ip):
     log('Certificado TLS do controlador não encontrado - gerando com certs/generate_cert.sh')
     subprocess.run(['bash', os.path.join(PROJECT_DIR, 'certs', 'generate_cert.sh'), gateway_ip], check=True)
     devolver_ao_usuario(os.path.join(PROJECT_DIR, 'certs'))
+
+
+def aplicar_hash_certificado(hash_nome, gateway_ip):
+    """Guarda o par original do projeto e gera um novo assinado com o hash escolhido."""
+    restaurar_certificado()  # caso uma execução anterior tenha sido interrompida
+    shutil.copy2(CERT_FILE, CERT_BACKUP)
+    shutil.copy2(KEY_FILE, KEY_BACKUP)
+    log(f'Gerando certificado do controlador assinado com {hash_nome}')
+    subprocess.run(['bash', os.path.join(PROJECT_DIR, 'certs', 'generate_cert.sh'), gateway_ip, hash_nome],
+                   check=True, capture_output=True)
+
+
+def restaurar_certificado():
+    if os.path.isfile(CERT_BACKUP) and os.path.isfile(KEY_BACKUP):
+        os.replace(CERT_BACKUP, CERT_FILE)
+        os.replace(KEY_BACKUP, KEY_FILE)
+
+
+def assinatura_certificado(cert):
+    saida = subprocess.run(['openssl', 'x509', '-in', cert, '-noout', '-text'],
+                           capture_output=True, text=True).stdout
+    m = re.search(r'Signature Algorithm: (\S+)', saida)
+    return m.group(1) if m else None
 
 
 def resolver_ryu_manager(args):
@@ -246,13 +295,29 @@ def esperar_registro(conn, ips, timeout=10):
     return faltando
 
 
-def comando_autenticacao(postura, gateway_ip, arquivos_host):
+def opcao_sigalgs(hash_nome):
+    sigalgs = HASHES[hash_nome]
+    return f'-sigalgs {sigalgs} ' if sigalgs else ''
+
+
+def comando_autenticacao(postura, gateway_ip, arquivos_host, hash_nome):
     if postura == 'real':
         return ['bash', os.path.join(arquivos_host, 'script.sh')]
     cert = os.path.join(arquivos_host, 'nac_controller.crt')
     return ['bash', '-c',
             f'echo 1 | timeout 5 openssl s_client -connect {gateway_ip}:{TLS_STATUS_PORT} '
-            f'-tls1_3 -CAfile {cert} -verify_return_error -quiet -no_ign_eof > /dev/null 2>&1']
+            f'-tls1_3 {opcao_sigalgs(hash_nome)}-CAfile {cert} -verify_return_error '
+            f'-quiet -no_ign_eof > /dev/null 2>&1']
+
+
+def verificar_tls(host, gateway_ip, cert, hash_nome):
+    """Handshake de conferência (sem enviar status) para registrar o que foi negociado."""
+    saida = host.cmd(f'timeout 5 openssl s_client -connect {gateway_ip}:{TLS_STATUS_PORT} -tls1_3 '
+                     f'{opcao_sigalgs(hash_nome)}-CAfile {cert} -verify_return_error < /dev/null 2>&1')
+    digest = re.search(r'Peer signing digest: (\S+)', saida)
+    cifra = re.search(r'Cipher is (\S+)', saida)
+    return {'tls_hash_handshake': digest.group(1).lower() if digest else None,
+            'tls_cifra': cifra.group(1) if cifra else None}
 
 
 def aguardar_decisoes(conn, em_andamento, timeout):
@@ -281,14 +346,16 @@ def aguardar_decisoes(conn, em_andamento, timeout):
 
 
 def autenticar_hosts(hosts, gateway_ip, arquivos_host, args, conn, logs_dir, rep):
-    cmd = comando_autenticacao(args.postura, gateway_ip, arquivos_host)
+    cmd = comando_autenticacao(args.postura, gateway_ip, arquivos_host, args.hash)
+    # script.sh lê o algoritmo de assinatura do handshake de NAC_SIGALGS
+    env = dict(os.environ, NAC_SIGALGS=HASHES[args.hash] or '')
     lotes = [[h] for h in hosts] if args.modo_auth == 'sequencial' else [hosts]
     resultados = {}
     for lote in lotes:
         em_andamento = {}
         for host in lote:
             t0 = time.monotonic()
-            proc = host.popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            proc = host.popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
             em_andamento[host.IP()] = (t0, proc)
         decisoes = aguardar_decisoes(conn, em_andamento, args.timeout_auth)
         for host in lote:
@@ -349,7 +416,7 @@ def executar_repeticao(rep, args, dir_saida):
         hosts = [h for h in net.hosts if h.name.startswith('h')]
         for h in hosts:
             linhas[h.name] = {'repeticao': rep, 'host': h.name, 'ip': h.IP(),
-                              'arquitetura': args.arquitetura, 'n_hosts': args.hosts}
+                              'arquitetura': args.arquitetura, 'n_hosts': args.hosts, 'hash': args.hash}
 
         aprovados = hosts
         if com_arquitetura:
@@ -371,6 +438,13 @@ def executar_repeticao(rep, args, dir_saida):
             os.makedirs(arquivos_host, exist_ok=True)
             shutil.copy(os.path.join(PROJECT_DIR, 'script.sh'), arquivos_host)
             shutil.copy(CERT_FILE, arquivos_host)
+            cert_host = os.path.join(arquivos_host, 'nac_controller.crt')
+            tls = verificar_tls(hosts[0], gateway_ip, cert_host, args.hash)
+            tls['cert_assinatura'] = assinatura_certificado(cert_host)
+            log(f"[rep {rep}] TLS: certificado {tls['cert_assinatura']}, "
+                f"handshake {tls['tls_hash_handshake']}, cifra {tls['tls_cifra']}")
+            for h in hosts:
+                linhas[h.name].update(tls)
             log(f'[rep {rep}] Autenticando hosts (postura={args.postura}, modo={args.modo_auth})')
             auth = autenticar_hosts(hosts, gateway_ip, arquivos_host, args, conn, logs_dir, rep)
             for h in hosts:
@@ -411,7 +485,8 @@ def executar_repeticao(rep, args, dir_saida):
 
 # ------------------------------------------------------------------ saída
 
-COLUNAS = ['repeticao', 'arquitetura', 'n_hosts', 'host', 'ip', 'aprovado', 'status_nac', 'delta_tc_s',
+COLUNAS = ['repeticao', 'arquitetura', 'n_hosts', 'hash', 'cert_assinatura', 'tls_hash_handshake', 'tls_cifra',
+           'host', 'ip', 'aprovado', 'status_nac', 'delta_tc_s',
            'lat_autenticador_rtt_avg_ms', 'lat_autenticador_rtt_min_ms', 'lat_autenticador_rtt_max_ms',
            'lat_autenticador_rtt_mdev_ms', 'lat_autenticador_perda_pct',
            'lat_destino', 'lat_rtt_avg_ms', 'lat_rtt_min_ms', 'lat_rtt_max_ms', 'lat_rtt_mdev_ms',
@@ -444,6 +519,8 @@ def gravar_resultados(linhas, args, dir_saida):
         'parametros': {k: v for k, v in vars(args).items() if k not in ('saida', 'ryu_manager')},
         'hosts_aprovados': sum(1 for l in linhas if l.get('aprovado')),
         'hosts_total': len(linhas),
+        'criptografia': ({k: linhas[0].get(k) for k in ('hash', 'cert_assinatura', 'tls_hash_handshake', 'tls_cifra')}
+                         if linhas and args.arquitetura == 'com' else None),
         'metricas': {chave: estatisticas([l.get(chave) for l in linhas]) for chave in METRICAS_RESUMO},
     }
     with open(os.path.join(dir_saida, 'resumo.json'), 'w') as f:
@@ -453,6 +530,10 @@ def gravar_resultados(linhas, args, dir_saida):
 
 def imprimir_resumo(resumo):
     print()
+    cripto = resumo['criptografia']
+    if cripto:
+        print(f"Criptografia: hash {cripto['hash']} | certificado {cripto['cert_assinatura']} | "
+              f"handshake {cripto['tls_hash_handshake']} | cifra {cripto['tls_cifra']}\n")
     print(f"{'Métrica':<42}{'média':>10}{'desvio':>10}{'min':>10}{'max':>10}{'n':>5}")
     for chave, nome in METRICAS_RESUMO.items():
         est = resumo['metricas'][chave]
@@ -472,6 +553,8 @@ def main():
     setLogLevel('warning')
 
     nome = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{args.arquitetura}_{args.hosts}h"
+    if args.hash:
+        nome += f'_{args.hash}'
     dir_saida = os.path.join(args.saida, nome)
     os.makedirs(os.path.join(dir_saida, 'logs'), exist_ok=True)
 
@@ -483,9 +566,13 @@ def main():
 
     linhas = []
     try:
+        if args.arquitetura == 'com':
+            aplicar_hash_certificado(args.hash, f'10.0.0.{args.hosts + 1}')
         for rep in range(1, args.repeticoes + 1):
             linhas += executar_repeticao(rep, args, dir_saida)
     finally:
+        restaurar_certificado()
+        devolver_ao_usuario(os.path.join(PROJECT_DIR, 'certs'))
         resumo = gravar_resultados(linhas, args, dir_saida)
         devolver_ao_usuario(args.saida)
     imprimir_resumo(resumo)

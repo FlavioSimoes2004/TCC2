@@ -29,6 +29,14 @@ GATEWAY=$(ip route | awk '/default/ {print $3}')
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CERT_FILE="$SCRIPT_DIR/nac_controller.crt"
 
+# NAC_SIGALGS (opcional): algoritmo de assinatura exigido no handshake TLS 1.3
+# (ex.: rsa_pss_rsae_sha512). Usado pela automação de experimentos para
+# escolher o hash; se não for definido, vale o padrão do OpenSSL.
+SIGALGS_OPT=()
+if [ -n "$NAC_SIGALGS" ]; then
+    SIGALGS_OPT=(-sigalgs "$NAC_SIGALGS")
+fi
+
 # Envia o status (0 ou 1) para o controlador via TLS 1.3.
 # A validação do dispositivo passa a trafegar cifrada (e autenticada pelo
 # certificado do controlador, quando ele está disponível), em vez de texto
@@ -47,6 +55,7 @@ enviar_status_tls() {
         echo "$status" | timeout 5 openssl s_client \
             -connect "$GATEWAY:9999" \
             -tls1_3 \
+            "${SIGALGS_OPT[@]}" \
             -CAfile "$CERT_FILE" \
             -verify_return_error \
             -quiet -no_ign_eof > /dev/null 2>&1
@@ -57,6 +66,7 @@ enviar_status_tls() {
         echo "$status" | timeout 5 openssl s_client \
             -connect "$GATEWAY:9999" \
             -tls1_3 \
+            "${SIGALGS_OPT[@]}" \
             -verify 0 \
             -quiet -no_ign_eof > /dev/null 2>&1
     fi
