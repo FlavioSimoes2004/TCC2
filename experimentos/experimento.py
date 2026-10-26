@@ -29,13 +29,21 @@ controlador e a assinatura do handshake TLS 1.3. O TLS 1.3 não permite SHA-1
 no handshake; com sha1, só o certificado muda e o handshake segue no padrão
 do OpenSSL (SHA-256).
 
+O resumo traz, para cada métrica, média, desvio padrão, mínimo, máximo e o
+intervalo de confiança da média (t de Student, 95% por padrão).
+
+Com --host hX, o ambiente continua com os N hosts (todos se autenticam), mas
+só as métricas do host escolhido são medidas e gravadas.
+
 Uso (precisa de root por causa do Mininet):
     sudo venv/bin/python experimentos/experimento.py
     sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura com
+    sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura com --host h3
 """
 import argparse
 import csv
 import json
+import math
 import os
 import re
 import shutil
@@ -118,6 +126,11 @@ def parse_args():
                         help='hosts se autenticam um por vez ou todos ao mesmo tempo')
     parser.add_argument('--timeout-auth', type=float, default=120,
                         help='tempo máximo (s) para aguardar a decisão de autenticação de um host')
+    parser.add_argument('--host',
+                        help='mede e grava somente as métricas deste host (ex.: h3); '
+                             'os demais continuam na topologia e se autenticam normalmente')
+    parser.add_argument('--confianca', type=float, default=0.95,
+                        help='nível de confiança do intervalo de confiança da média (padrão: 0.95)')
     parser.add_argument('--ryu-manager', help='caminho do ryu-manager (padrão: venv/bin/ryu-manager)')
     parser.add_argument('--saida', default=os.path.join(PROJECT_DIR, 'experimentos', 'resultados'),
                         help='diretório onde os resultados são gravados')
@@ -143,6 +156,13 @@ def perguntar_parametros(args):
         resp = input(f"Hash da criptografia [{'/'.join(HASHES)}]: ").strip().lower()
         if resp in HASHES:
             args.hash = resp
+    if args.host is not None:
+        nome = args.host.strip().lower()
+        args.host = nome if nome.startswith('h') else f'h{nome}'
+        if args.host not in {f'h{i}' for i in range(1, args.hosts + 1)}:
+            sys.exit(f'--host {args.host} não existe numa topologia de {args.hosts} hosts (use h1..h{args.hosts}).')
+    if not 0 < args.confianca < 1:
+        sys.exit('--confianca deve estar entre 0 e 1 (ex.: 0.95).')
     if args.hosts < 2:
         log('AVISO: com menos de 2 hosts não é possível medir latência/throughput entre hosts.')
 
@@ -371,16 +391,23 @@ def autenticar_hosts(hosts, gateway_ip, arquivos_host, args, conn, logs_dir, rep
     return resultados
 
 
-def medir_throughput(hosts, duracao):
-    """iperf TCP de cada host para o próximo (anel), um par por vez. {host: (destino, Mbps)}"""
+def pares_anel(hosts, alvo=None):
+    """[(origem, destino)]: cada host com o próximo da lista (anel); só o do alvo, se informado."""
     if len(hosts) < 2:
+        return []
+    return [(h, hosts[(i + 1) % len(hosts)]) for i, h in enumerate(hosts) if alvo is None or h.name == alvo]
+
+
+def medir_throughput(pares, duracao):
+    """iperf TCP de cada origem para o seu destino, um par por vez. {origem: (destino, Mbps)}"""
+    if not pares:
         return {}
-    servidores = [h.popen(['iperf', '-s', '-p', str(IPERF_PORT)]) for h in hosts]
+    destinos = {servidor.name: servidor for _, servidor in pares}
+    servidores = [h.popen(['iperf', '-s', '-p', str(IPERF_PORT)]) for h in destinos.values()]
     time.sleep(1)
     resultados = {}
     try:
-        for i, cliente in enumerate(hosts):
-            servidor = hosts[(i + 1) % len(hosts)]
+        for cliente, servidor in pares:
             saida = cliente.cmd(f'iperf -c {servidor.IP()} -p {IPERF_PORT} -t {duracao} -y C')
             linhas = [l for l in saida.strip().splitlines() if l.count(',') >= 8]
             mbps = float(linhas[-1].split(',')[-1]) / 1e6 if linhas else None
@@ -427,6 +454,9 @@ def executar_repeticao(rep, args, dir_saida):
             #    cadastra o host no banco antes da autenticação)
             log(f'[rep {rep}] Medindo latência host <-> autenticador ({gateway_ip})')
             for h in hosts:
+                if args.host is not None and h.name != args.host:
+                    h.cmd(f'ping -c 1 -W 1 {gateway_ip}')  # só para o host ser cadastrado no banco
+                    continue
                 for k, v in medir_ping(h, gateway_ip, args.ping_count).items():
                     linhas[h.name][f'lat_autenticador_{k}'] = v
             faltando = esperar_registro(conn, [h.IP() for h in hosts])
@@ -457,20 +487,24 @@ def executar_repeticao(rep, args, dir_saida):
             for h in hosts:
                 linhas[h.name].update(aprovado=True)
 
+        pares = pares_anel(aprovados, args.host)
+        if args.host is not None and not pares:
+            log(f'[rep {rep}] AVISO: {args.host} não foi aprovado (ou não há outro aprovado) - '
+                'sem latência entre hosts e throughput nesta repetição.')
+
         # 3) Latência entre hosts aprovados (anel)
-        if len(aprovados) >= 2:
+        if pares:
             log(f'[rep {rep}] Medindo latência entre hosts aprovados')
-            for i, h in enumerate(aprovados):
-                destino = aprovados[(i + 1) % len(aprovados)]
+            for h, destino in pares:
                 linhas[h.name]['lat_destino'] = destino.name
                 for k, v in medir_ping(h, destino.IP(), args.ping_count).items():
                     linhas[h.name][f'lat_{k}'] = v
 
         # 4) Throughput dos hosts aprovados
-        if len(aprovados) >= 2:
+        if pares:
             if shutil.which('iperf'):
                 log(f'[rep {rep}] Medindo throughput dos hosts aprovados ({args.iperf_tempo}s por par)')
-                for nome, (destino, mbps) in medir_throughput(aprovados, args.iperf_tempo).items():
+                for nome, (destino, mbps) in medir_throughput(pares, args.iperf_tempo).items():
                     linhas[nome].update(throughput_destino=destino, throughput_mbps=mbps)
             else:
                 log('AVISO: iperf não encontrado - throughput não medido (sudo dnf install iperf).')
@@ -480,6 +514,8 @@ def executar_repeticao(rep, args, dir_saida):
         if net is not None:
             net.stop()
         parar_controlador(ryu)
+    if args.host is not None:
+        return [linhas[args.host]] if args.host in linhas else []
     return list(linhas.values())
 
 
@@ -500,13 +536,66 @@ METRICAS_RESUMO = {
 }
 
 
-def estatisticas(valores):
+def _beta_incompleta_reg(a, b, x):
+    """Função beta incompleta regularizada I_x(a, b) (frações contínuas de Lentz)."""
+    if x <= 0:
+        return 0.0
+    if x >= 1:
+        return 1.0
+    if x > (a + 1) / (a + b + 2):
+        return 1.0 - _beta_incompleta_reg(b, a, 1.0 - x)
+    frente = math.exp(math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+                      + a * math.log(x) + b * math.log(1 - x)) / a
+    minimo = 1e-300
+    c, d = 1.0, 1.0 - (a + b) * x / (a + 1)
+    d = 1.0 / (d if abs(d) > minimo else minimo)
+    f = d
+    for m in range(1, 300):
+        for num in (m * (b - m) * x / ((a + 2 * m - 1) * (a + 2 * m)),
+                    -(a + m) * (a + b + m) * x / ((a + 2 * m) * (a + 2 * m + 1))):
+            d = 1.0 + num * d
+            d = 1.0 / (d if abs(d) > minimo else minimo)
+            c = 1.0 + num / c
+            c = c if abs(c) > minimo else minimo
+            f *= c * d
+        if abs(c * d - 1.0) < 1e-12:
+            break
+    return frente * f
+
+
+def t_critico(confianca, graus_liberdade):
+    """Quantil bicaudal da t de Student (ex.: 0.95 e 9 g.l. -> 2.262), por bisseção na CDF."""
+    alvo = 1 - (1 - confianca) / 2
+    gl = graus_liberdade
+
+    def cdf(t):
+        return 1 - 0.5 * _beta_incompleta_reg(gl / 2, 0.5, gl / (gl + t * t))
+
+    baixo, alto = 0.0, 1e4
+    for _ in range(200):
+        meio = (baixo + alto) / 2
+        if cdf(meio) < alvo:
+            baixo = meio
+        else:
+            alto = meio
+    return (baixo + alto) / 2
+
+
+def estatisticas(valores, confianca):
     valores = [v for v in valores if v is not None]
     if not valores:
         return None
-    return {'amostras': len(valores), 'media': statistics.mean(valores),
-            'desvio_padrao': statistics.stdev(valores) if len(valores) > 1 else 0.0,
-            'min': min(valores), 'max': max(valores)}
+    n = len(valores)
+    media = statistics.mean(valores)
+    desvio = statistics.stdev(valores) if n > 1 else 0.0
+    est = {'amostras': n, 'media': media, 'desvio_padrao': desvio,
+           'min': min(valores), 'max': max(valores),
+           'ic_nivel': confianca, 'ic_margem': None, 'ic_inferior': None, 'ic_superior': None}
+    if n > 1:
+        # IC da média: media +- t(confianca, n-1) * desvio / sqrt(n)
+        margem = t_critico(confianca, n - 1) * desvio / math.sqrt(n)
+        est.update(ic_margem=margem, ic_inferior=media - margem, ic_superior=media + margem)
+    return est
 
 
 def gravar_resultados(linhas, args, dir_saida):
@@ -521,7 +610,8 @@ def gravar_resultados(linhas, args, dir_saida):
         'hosts_total': len(linhas),
         'criptografia': ({k: linhas[0].get(k) for k in ('hash', 'cert_assinatura', 'tls_hash_handshake', 'tls_cifra')}
                          if linhas and args.arquitetura == 'com' else None),
-        'metricas': {chave: estatisticas([l.get(chave) for l in linhas]) for chave in METRICAS_RESUMO},
+        'metricas': {chave: estatisticas([l.get(chave) for l in linhas], args.confianca)
+                     for chave in METRICAS_RESUMO},
     }
     with open(os.path.join(dir_saida, 'resumo.json'), 'w') as f:
         json.dump(resumo, f, indent=2, ensure_ascii=False)
@@ -534,14 +624,19 @@ def imprimir_resumo(resumo):
     if cripto:
         print(f"Criptografia: hash {cripto['hash']} | certificado {cripto['cert_assinatura']} | "
               f"handshake {cripto['tls_hash_handshake']} | cifra {cripto['tls_cifra']}\n")
-    print(f"{'Métrica':<42}{'média':>10}{'desvio':>10}{'min':>10}{'max':>10}{'n':>5}")
+    if resumo['parametros'].get('host'):
+        print(f"Métricas somente do host {resumo['parametros']['host']}\n")
+    nivel = f"IC {resumo['parametros']['confianca'] * 100:g}%"
+    print(f"{'Métrica':<42}{'média':>10}{'desvio':>10}{'min':>10}{'max':>10}{nivel:>24}{'n':>5}")
     for chave, nome in METRICAS_RESUMO.items():
         est = resumo['metricas'][chave]
         if est is None:
             print(f'{nome:<42}{"N/A":>10}')
-        else:
-            print(f"{nome:<42}{est['media']:>10.3f}{est['desvio_padrao']:>10.3f}"
-                  f"{est['min']:>10.3f}{est['max']:>10.3f}{est['amostras']:>5}")
+            continue
+        ic = (f"[{est['ic_inferior']:.3f}, {est['ic_superior']:.3f}]"
+              if est['ic_margem'] is not None else 'N/A (n<2)')
+        print(f"{nome:<42}{est['media']:>10.3f}{est['desvio_padrao']:>10.3f}"
+              f"{est['min']:>10.3f}{est['max']:>10.3f}{ic:>24}{est['amostras']:>5}")
     print(f"\nHosts aprovados: {resumo['hosts_aprovados']}/{resumo['hosts_total']} (somando as repetições)")
 
 
@@ -555,6 +650,8 @@ def main():
     nome = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{args.arquitetura}_{args.hosts}h"
     if args.hash:
         nome += f'_{args.hash}'
+    if args.host:
+        nome += f'_{args.host}'
     dir_saida = os.path.join(args.saida, nome)
     os.makedirs(os.path.join(dir_saida, 'logs'), exist_ok=True)
 

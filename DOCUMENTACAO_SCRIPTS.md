@@ -96,6 +96,23 @@ Esta seção resume as mudanças mais recentes feitas no projeto em relação à
 
 **Arquivos afetados:** `experimentos/experimento.py`, `certs/generate_cert.sh`, `script.sh`, `README.md` e este documento. `ryu_nac_controller.py` não mudou: ele carrega o certificado que estiver em `certs/`, e o algoritmo do handshake é pedido pelo host.
 
+
+### 5. Intervalo de confiança e métricas de um host específico (`experimentos/experimento.py`)
+
+**Intervalo de confiança:** para cada métrica do resumo, além de amostras, média, desvio padrão, mínimo e máximo, o experimento calcula o intervalo de confiança da média com a t de Student: `média ± t(nível, n−1) · desvio / √n`. O nível é 95% por padrão (`--confianca`, valor entre 0 e 1). O quantil da t é calculado no próprio script (função `t_critico`, por bisseção na CDF da t via beta incompleta regularizada), sem depender de `scipy`; os valores conferem com a tabela (ex.: 95% e 4 g.l. → 2,776). Com menos de 2 amostras não há IC (fica `null`/N/A). O IC aparece no `resumo.json` (`ic_nivel`, `ic_margem`, `ic_inferior`, `ic_superior`) e numa coluna da tabela do terminal; o CSV não muda.
+
+**Por que a t de Student:** o número de amostras costuma ser pequeno (uma por repetição, quando se usa `--host`), e a variância populacional é desconhecida, então a distribuição normal subestimaria a margem.
+
+**Métricas de um host específico (`--host hX`):** a topologia continua com os N hosts e todos se autenticam (o cenário, inclusive a carga sobre o autenticador no modo `simultaneo`, é o mesmo), mas só o host escolhido é medido e gravado:
+- latência até o autenticador: só o host escolhido faz a medição completa; os demais mandam um único `ping` ao `nat0`, apenas para serem cadastrados no banco;
+- delta Tc: é medido para todos (é a autenticação que mantém o cenário igual), mas só o do host escolhido vai para os resultados;
+- latência entre hosts e throughput: só o par (host escolhido → próximo host aprovado no anel). Se o host escolhido não for aprovado, essas métricas ficam N/A naquela repetição;
+- o CSV e o resumo só contêm as linhas do host escolhido (uma por repetição). Assim, o desvio padrão e o IC passam a ser calculados entre repetições do mesmo host, que são amostras independentes.
+
+O host aceita `h3` ou `3` e precisa existir na topologia (`h1`..`hN`).
+
+**Arquivos afetados:** `experimentos/experimento.py` (novos `--host` e `--confianca`; funções `pares_anel`, `t_critico`, `_beta_incompleta_reg`; `medir_throughput` passou a receber pares origem→destino; `estatisticas` ganhou o IC), `README.md` e este documento.
+
 ---
 
 ## 1. `my_topology2.py`
@@ -517,6 +534,8 @@ sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura com --r
 | `--postura real\|aprovado` | `real` | `real` executa o `script.sh` (firewalld + `dnf check-update`); `aprovado` envia direto o status `1` pelo mesmo comando `openssl s_client -tls1_3 -CAfile ... -verify_return_error` usado pelo `script.sh`, isolando o tempo do protocolo de autenticação do tempo da checagem de postura |
 | `--modo-auth sequencial\|simultaneo` | `sequencial` | hosts se autenticam um por vez, ou todos ao mesmo tempo (carga simultânea no autenticador) |
 | `--timeout-auth S` | 120 | tempo máximo esperando a decisão de um host |
+| `--host hX` | (todos) | mede e grava somente as métricas desse host; os demais continuam na rede e se autenticam. Ver item 5 do "Histórico de alterações" |
+| `--confianca C` | 0.95 | nível do intervalo de confiança da média (t de Student) |
 | `--ryu-manager CAMINHO` | `venv/bin/ryu-manager` | executável do Ryu |
 | `--saida DIR` | `experimentos/resultados` | onde gravar os resultados |
 
@@ -528,18 +547,18 @@ sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura com --r
 3. **(com) Latência host ↔ autenticador:** cada host faz `ping` no IP do `nat0` (gateway por onde o host alcança o servidor TLS do controlador). Esse tráfego também gera o `packet_in` que cadastra o host no banco; o experimento espera o cadastro antes de seguir.
 4. **(com) Delta Tc:** o `script.sh` e o `nac_controller.crt` são copiados para `arquivos_host/` (equivalente ao download pelo captive portal). Um handshake de conferência a partir do primeiro host registra o que foi negociado (assinatura do certificado, hash do handshake e suíte). Depois, a autenticação é executada em cada host, com `NAC_SIGALGS` definido conforme o `--hash`. Para cada host: `t0` = instante em que a autenticação é disparada; `t1` = primeiro instante em que o `status` daquele IP deixa de ser `NULL` no banco (consulta a cada 50 ms, com `autocommit` para não ler um *snapshot* antigo). **Delta Tc = t1 − t0**, ou seja, inclui checagem de postura (no modo `real`), handshake TLS 1.3, envio do status e gravação no banco. Hosts com `status = 1` são os **aprovados**. A saída do script de cada host fica em `logs/auth_<host>_rep<R>.log`.
 5. **(com)** Espera um ciclo do `db_polling_loop` (6 s) para os bloqueios dos rejeitados já estarem instalados.
-6. **Latência:** entre os hosts aprovados (no cenário `sem`, todos), cada host pinga o próximo da lista, em anel (h1→h2, h2→h3, …, hN→h1). Os primeiros pacotes entram na média de propósito: no cenário `com` eles incluem o custo do `packet_in` no controlador.
-7. **Throughput dos hosts aprovados:** `iperf -s` em todos os aprovados e, um par por vez, `iperf -c` de cada aprovado para o próximo (anel), durante `--iperf-tempo` segundos. Valor em Mbps.
+6. **Latência:** entre os hosts aprovados (no cenário `sem`, todos), cada host pinga o próximo da lista, em anel (h1→h2, h2→h3, …, hN→h1). Com `--host`, só o par do host escolhido. Os primeiros pacotes entram na média de propósito: no cenário `com` eles incluem o custo do `packet_in` no controlador.
+7. **Throughput dos hosts aprovados:** `iperf -s` nos hosts de destino e, um par por vez, `iperf -c` de cada aprovado para o próximo (anel), durante `--iperf-tempo` segundos. Valor em Mbps. Com `--host`, só o par do host escolhido.
 8. Derruba a rede e o controlador.
 
 Com menos de 2 hosts aprovados não há par para latência/throughput, e essas métricas ficam N/A. No cenário `sem` todos os hosts contam como aprovados e o delta Tc e a latência até o autenticador são N/A.
 
 ### Resultados
 
-Gravados em `experimentos/resultados/<AAAAMMDD_HHMMSS>_<com|sem>_<N>h[_<hash>]/` (o dono dos arquivos volta a ser o usuário que chamou o `sudo`):
+Gravados em `experimentos/resultados/<AAAAMMDD_HHMMSS>_<com|sem>_<N>h[_<hash>][_<host>]/` (o dono dos arquivos volta a ser o usuário que chamou o `sudo`):
 
 - `metricas_hosts.csv`: uma linha por host por repetição (`hash`, `cert_assinatura`, `tls_hash_handshake`, `tls_cifra`, `aprovado`, `status_nac`, `delta_tc_s`, `lat_autenticador_rtt_*_ms`, `lat_autenticador_perda_pct`, `lat_destino`, `lat_rtt_*_ms`, `lat_perda_pct`, `throughput_destino`, `throughput_mbps`).
-- `resumo.json`: parâmetros usados, criptografia usada (no cenário `com`), hosts aprovados e, para cada métrica, amostras, média, desvio padrão, mínimo e máximo (a mesma tabela é impressa no terminal).
+- `resumo.json`: parâmetros usados, criptografia usada (no cenário `com`), hosts aprovados e, para cada métrica, amostras, média, desvio padrão (amostral, n−1), mínimo, máximo e intervalo de confiança da média (`ic_nivel`, `ic_margem`, `ic_inferior`, `ic_superior`; t de Student). A mesma tabela é impressa no terminal. Sem `--host`, as amostras são todas as linhas (todos os hosts de todas as repetições); como hosts da mesma repetição não são independentes, para o IC prefira `--host` (uma amostra por repetição).
 - `logs/`: log do Ryu e saída da autenticação de cada host.
 - `arquivos_host/`: cópia do `script.sh` e do certificado usados pelos hosts.
 

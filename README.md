@@ -97,6 +97,9 @@ sudo venv/bin/python experimentos/experimento.py
 
 # ou passando tudo por parâmetro
 sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura com --hash sha256 --repeticoes 10
+
+# somente as métricas do host h3 (os outros hosts continuam na rede e se autenticam)
+sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura com --hash sha256 --repeticoes 10 --host h3
 sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura sem --repeticoes 10
 ```
 
@@ -104,5 +107,7 @@ sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura sem --r
   O hash escolhido (`--hash`) assina o certificado do controlador e o handshake TLS 1.3
   (com `sha1`, só o certificado: o TLS 1.3 não aceita SHA-1 no handshake).
 - `sem`: somente Mininet com os hosts e um switch standalone (sem controlador, banco e NAC).
-- Resultados em `experimentos/resultados/<data>_<com|sem>_<N>h[_<hash>]/` (`metricas_hosts.csv`, `resumo.json`, `logs/`).
+- Resultados em `experimentos/resultados/<data>_<com|sem>_<N>h[_<hash>][_<host>]/` (`metricas_hosts.csv`, `resumo.json`, `logs/`).
+- O resumo traz média, desvio padrão, mínimo, máximo e o intervalo de confiança da média
+  (t de Student; 95% por padrão, ajustável com `--confianca 0.99`).
 - Opções e detalhes das métricas: seção "4. `experimentos/experimento.py`" do `DOCUMENTACAO_SCRIPTS.md`.
