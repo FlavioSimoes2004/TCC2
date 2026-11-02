@@ -111,3 +111,19 @@ sudo venv/bin/python experimentos/experimento.py --hosts 5 --arquitetura sem --r
 - O resumo traz média, desvio padrão, mínimo, máximo e o intervalo de confiança da média
   (t de Student; 95% por padrão, ajustável com `--confianca 0.99`).
 - Opções e detalhes das métricas: seção "4. `experimentos/experimento.py`" do `DOCUMENTACAO_SCRIPTS.md`.
+
+## Bateria completa de experimentos
+
+`experimentos/rodar_experimentos.sh` roda tudo em sequência, sem intervenção: 2, 4, 8, 16, 32 e 64
+hosts; para cada um, sem arquitetura e depois com arquitetura (sha1, sha256, sha512). São 24 execuções,
+sempre com 30 repetições e foco no host h1.
+
+```bash
+# necessário para o sha1 no Fedora; desfazer depois com: sudo update-crypto-policies --set DEFAULT
+sudo update-crypto-policies --set DEFAULT:SHA1
+
+sudo bash experimentos/rodar_experimentos.sh
+```
+
+- Resultados em `experimentos/resultados/sem arquitetura/` e `experimentos/resultados/com arquitetura/<hash>/`.
+- Log completo em `experimentos/resultados/bateria_<data>.log`. Uma execução que falha não interrompe a bateria e aparece no resumo final.

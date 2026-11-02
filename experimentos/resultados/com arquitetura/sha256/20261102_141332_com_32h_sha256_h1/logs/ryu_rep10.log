@@ -1,0 +1,114 @@
+/home/flavio/Documents/TCC/TCC2/venv/lib64/python3.14/site-packages/ryu/lib/hub.py:30: EventletDeprecationWarning: 
+Eventlet is deprecated. It is currently being maintained in bugfix mode, and
+we strongly recommend against using it for new projects.
+
+If you are already using Eventlet, we recommend migrating to a different
+framework.  For more detail see
+https://eventlet.readthedocs.io/en/latest/asyncio/migration.html
+
+  import eventlet
+2 RLock(s) were not greened, to fix this error make sure you run eventlet.monkey_patch() before importing any other modules.
+loading app ryu_nac_controller.py
+loading app ryu.controller.ofp_handler
+instantiating app ryu_nac_controller.py of NacSwitch
+instantiating app ryu.controller.ofp_handler of OFPHandler
+Servidor TCP (TLS 1.3) do Controlador Ryu escutando na porta 9999
+Falha no handshake TLS com 127.0.0.1: [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1082)
+Switch conectado: 0000000000000001
+Novo dispositivo registrado no banco: MAC=3e:4c:1e:a2:83:35, IP=10.0.0.33
+Novo dispositivo registrado no banco: MAC=26:fa:ac:55:34:ec, IP=10.0.0.1
+Novo dispositivo registrado no banco: MAC=62:73:60:f7:ac:05, IP=10.0.0.2
+Novo dispositivo registrado no banco: MAC=5e:c7:d8:6b:dd:42, IP=10.0.0.3
+Novo dispositivo registrado no banco: MAC=9e:6d:fc:f9:3d:48, IP=10.0.0.4
+Novo dispositivo registrado no banco: MAC=32:06:92:fe:90:d3, IP=10.0.0.6
+Novo dispositivo registrado no banco: MAC=c6:f1:35:fe:2f:f5, IP=10.0.0.5
+Novo dispositivo registrado no banco: MAC=46:91:59:52:64:8a, IP=10.0.0.7
+Novo dispositivo registrado no banco: MAC=e6:33:64:1d:b7:05, IP=10.0.0.8
+Novo dispositivo registrado no banco: MAC=b2:12:79:66:cf:07, IP=10.0.0.9
+Novo dispositivo registrado no banco: MAC=02:d0:b4:c8:0b:b2, IP=10.0.0.10
+Novo dispositivo registrado no banco: MAC=46:8b:b1:d4:f5:ae, IP=10.0.0.11
+Novo dispositivo registrado no banco: MAC=a2:cc:23:0e:a9:39, IP=10.0.0.13
+Novo dispositivo registrado no banco: MAC=a6:ef:12:29:37:74, IP=10.0.0.12
+Novo dispositivo registrado no banco: MAC=c2:c8:63:77:89:10, IP=10.0.0.15
+Novo dispositivo registrado no banco: MAC=16:9a:ff:7c:51:e8, IP=10.0.0.14
+Novo dispositivo registrado no banco: MAC=9a:e0:65:2c:f6:f1, IP=10.0.0.16
+Novo dispositivo registrado no banco: MAC=e6:82:3b:57:4b:2e, IP=10.0.0.18
+Novo dispositivo registrado no banco: MAC=ca:6c:b1:2f:e4:12, IP=10.0.0.19
+Novo dispositivo registrado no banco: MAC=ca:d1:37:4f:6e:b7, IP=10.0.0.17
+Novo dispositivo registrado no banco: MAC=f2:e5:ab:10:ec:02, IP=10.0.0.20
+Novo dispositivo registrado no banco: MAC=e2:c6:70:d6:a0:74, IP=10.0.0.21
+Novo dispositivo registrado no banco: MAC=12:59:40:fe:6b:50, IP=10.0.0.22
+Novo dispositivo registrado no banco: MAC=86:6c:b8:33:bf:9b, IP=10.0.0.24
+Novo dispositivo registrado no banco: MAC=fa:29:93:11:66:99, IP=10.0.0.25
+Novo dispositivo registrado no banco: MAC=86:fa:65:ba:7e:26, IP=10.0.0.23
+Novo dispositivo registrado no banco: MAC=ee:2f:28:f4:25:4f, IP=10.0.0.26
+Novo dispositivo registrado no banco: MAC=a2:fa:5c:59:24:e3, IP=10.0.0.28
+Novo dispositivo registrado no banco: MAC=b2:4a:65:00:e6:1f, IP=10.0.0.27
+Novo dispositivo registrado no banco: MAC=4e:3c:c6:4c:57:09, IP=10.0.0.30
+Novo dispositivo registrado no banco: MAC=4e:59:2d:35:e8:07, IP=10.0.0.29
+Novo dispositivo registrado no banco: MAC=6e:50:d1:b3:39:21, IP=10.0.0.31
+Novo dispositivo registrado no banco: MAC=ce:13:28:ce:12:4d, IP=10.0.0.32
+Recebido status 1 do host com IP 10.0.0.1 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.1 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.2 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.2 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.3 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.3 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.4 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.4 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.5 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.5 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.6 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.6 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.7 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.7 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.8 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.8 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.9 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.9 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.10 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.10 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.11 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.11 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.12 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.12 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.13 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.13 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.14 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.14 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.15 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.15 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.16 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.16 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.17 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.17 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.18 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.18 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.19 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.19 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.20 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.20 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.21 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.21 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.22 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.22 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.23 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.23 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.24 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.24 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.25 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.25 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.26 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.26 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.27 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.27 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.28 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.28 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.29 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.29 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.30 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.30 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.31 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.31 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.32 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.32 agora tem status=1

@@ -113,6 +113,26 @@ O host aceita `h3` ou `3` e precisa existir na topologia (`h1`..`hN`).
 
 **Arquivos afetados:** `experimentos/experimento.py` (novos `--host` e `--confianca`; funções `pares_anel`, `t_critico`, `_beta_incompleta_reg`; `medir_throughput` passou a receber pares origem→destino; `estatisticas` ganhou o IC), `README.md` e este documento.
 
+
+### 6. Bateria completa de experimentos (`experimentos/rodar_experimentos.sh`)
+
+**O que mudou:** novo script que executa o `experimento.py` para todas as combinações, até acabar: 2, 4, 8, 16, 32 e 64 hosts e, para cada número de hosts, sem arquitetura e depois com arquitetura (sha1, sha256, sha512). São 24 execuções, sempre com `--repeticoes 30 --host h1` e os demais parâmetros no padrão do `experimento.py`.
+
+**Organização dos resultados:** usa o `--saida` do experimento para gravar em `resultados/sem arquitetura/<execução>/` e `resultados/com arquitetura/<hash>/<execução>/`. Execuções anteriores nessas pastas são mantidas.
+
+**Por que os cenários ficam intercalados por número de hosts:** cenários comparados rodam próximos no tempo, o que reduz o efeito de mudanças na carga da máquina ao longo do dia.
+
+**Comportamento:**
+- antes de começar, testa se o OpenSSL aceita assinar com SHA-1; se o sistema estiver na política `DEFAULT` do Fedora, para e informa o comando `update-crypto-policies --set DEFAULT:SHA1`. O script não altera a política do sistema;
+- uma execução que falha é registrada, o Mininet é limpo com `mn -c` e a bateria continua. O resumo final lista as falhas, e o código de saída é 1 se houver alguma;
+- Ctrl+C encerra a bateria inteira;
+- a saída completa fica em `resultados/bateria_<data>.log`;
+- usa o `python` do root por padrão; outro interpretador pode ser indicado com `PYTHON=...`.
+
+**Limitação:** como os cenários são intercalados, todos rodam sob a política `DEFAULT:SHA1`. Isso não deve afetar o desempenho de sha256 e sha512, mas deve ser registrado ao relatar os resultados.
+
+**Arquivos afetados:** `experimentos/rodar_experimentos.sh` (novo), `README.md` e este documento.
+
 ---
 
 ## 1. `my_topology2.py`

@@ -1,0 +1,69 @@
+{
+  "parametros": {
+    "hosts": 4,
+    "arquitetura": "com",
+    "repeticoes": 30,
+    "ping_count": 10,
+    "iperf_tempo": 10,
+    "postura": "real",
+    "hash": "sha256",
+    "modo_auth": "sequencial",
+    "timeout_auth": 120,
+    "host": "h1",
+    "confianca": 0.95
+  },
+  "hosts_aprovados": 30,
+  "hosts_total": 30,
+  "criptografia": {
+    "hash": "sha256",
+    "cert_assinatura": "sha256WithRSAEncryption",
+    "tls_hash_handshake": null,
+    "tls_cifra": null
+  },
+  "metricas": {
+    "delta_tc_s": {
+      "amostras": 30,
+      "media": 0.7103428086332618,
+      "desvio_padrao": 0.0004352759047544896,
+      "min": 0.7094368769994617,
+      "max": 0.7111085269998512,
+      "ic_nivel": 0.95,
+      "ic_margem": 0.00016253469401825344,
+      "ic_inferior": 0.7101802739392435,
+      "ic_superior": 0.7105053433272801
+    },
+    "lat_autenticador_rtt_avg_ms": {
+      "amostras": 30,
+      "media": 0.4482333333333333,
+      "desvio_padrao": 0.031399190999169053,
+      "min": 0.368,
+      "max": 0.519,
+      "ic_nivel": 0.95,
+      "ic_margem": 0.011724650608328903,
+      "ic_inferior": 0.4365086827250044,
+      "ic_superior": 0.4599579839416622
+    },
+    "lat_rtt_avg_ms": {
+      "amostras": 30,
+      "media": 0.3205,
+      "desvio_padrao": 0.032314990649691594,
+      "min": 0.246,
+      "max": 0.402,
+      "ic_nivel": 0.95,
+      "ic_margem": 0.012066615817874929,
+      "ic_inferior": 0.30843338418212507,
+      "ic_superior": 0.33256661581787494
+    },
+    "throughput_mbps": {
+      "amostras": 30,
+      "media": 102203.5320369,
+      "desvio_padrao": 1685.8445333386874,
+      "min": 93600.03457,
+      "max": 103377.079929,
+      "ic_nivel": 0.95,
+      "ic_margem": 629.5046943687332,
+      "ic_inferior": 101574.02734253126,
+      "ic_superior": 102833.03673126873
+    }
+  }
+}

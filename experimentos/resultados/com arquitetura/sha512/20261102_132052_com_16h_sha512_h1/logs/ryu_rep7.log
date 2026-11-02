@@ -1,0 +1,66 @@
+/home/flavio/Documents/TCC/TCC2/venv/lib64/python3.14/site-packages/ryu/lib/hub.py:30: EventletDeprecationWarning: 
+Eventlet is deprecated. It is currently being maintained in bugfix mode, and
+we strongly recommend against using it for new projects.
+
+If you are already using Eventlet, we recommend migrating to a different
+framework.  For more detail see
+https://eventlet.readthedocs.io/en/latest/asyncio/migration.html
+
+  import eventlet
+2 RLock(s) were not greened, to fix this error make sure you run eventlet.monkey_patch() before importing any other modules.
+loading app ryu_nac_controller.py
+loading app ryu.controller.ofp_handler
+instantiating app ryu_nac_controller.py of NacSwitch
+instantiating app ryu.controller.ofp_handler of OFPHandler
+Servidor TCP (TLS 1.3) do Controlador Ryu escutando na porta 9999
+Falha no handshake TLS com 127.0.0.1: [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1082)
+Switch conectado: 0000000000000001
+Novo dispositivo registrado no banco: MAC=06:b6:83:7b:10:64, IP=10.0.0.17
+Novo dispositivo registrado no banco: MAC=c2:cc:a6:1c:11:51, IP=10.0.0.1
+Novo dispositivo registrado no banco: MAC=76:ce:c5:4e:9d:4d, IP=10.0.0.2
+Novo dispositivo registrado no banco: MAC=4e:19:e0:99:82:b7, IP=10.0.0.3
+Novo dispositivo registrado no banco: MAC=06:1b:1e:1e:94:7f, IP=10.0.0.5
+Novo dispositivo registrado no banco: MAC=e6:83:16:35:f0:20, IP=10.0.0.4
+Novo dispositivo registrado no banco: MAC=76:ba:f6:18:ab:28, IP=10.0.0.6
+Novo dispositivo registrado no banco: MAC=4a:ff:b4:7f:87:a1, IP=10.0.0.7
+Novo dispositivo registrado no banco: MAC=5a:df:4a:71:30:78, IP=10.0.0.8
+Novo dispositivo registrado no banco: MAC=ca:20:1e:e8:f4:66, IP=10.0.0.10
+Novo dispositivo registrado no banco: MAC=22:28:0d:7a:1b:51, IP=10.0.0.9
+Novo dispositivo registrado no banco: MAC=2a:67:86:e3:cf:dd, IP=10.0.0.11
+Novo dispositivo registrado no banco: MAC=c2:03:34:ec:c3:53, IP=10.0.0.12
+Novo dispositivo registrado no banco: MAC=7a:6b:28:bf:69:b5, IP=10.0.0.13
+Novo dispositivo registrado no banco: MAC=92:73:5e:9f:97:05, IP=10.0.0.14
+Novo dispositivo registrado no banco: MAC=de:e1:9f:c1:54:44, IP=10.0.0.15
+Novo dispositivo registrado no banco: MAC=e6:50:5a:2b:cb:6a, IP=10.0.0.16
+Recebido status 1 do host com IP 10.0.0.1 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.1 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.2 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.2 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.3 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.3 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.4 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.4 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.5 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.5 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.6 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.6 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.7 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.7 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.8 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.8 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.9 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.9 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.10 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.10 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.11 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.11 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.12 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.12 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.13 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.13 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.14 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.14 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.15 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.15 agora tem status=1
+Recebido status 1 do host com IP 10.0.0.16 (via TLS 1.3)
+Banco atualizado: IP=10.0.0.16 agora tem status=1

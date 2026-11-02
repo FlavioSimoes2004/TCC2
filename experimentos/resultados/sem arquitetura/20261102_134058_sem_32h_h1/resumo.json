@@ -1,0 +1,44 @@
+{
+  "parametros": {
+    "hosts": 32,
+    "arquitetura": "sem",
+    "repeticoes": 30,
+    "ping_count": 10,
+    "iperf_tempo": 10,
+    "postura": "real",
+    "hash": null,
+    "modo_auth": "sequencial",
+    "timeout_auth": 120,
+    "host": "h1",
+    "confianca": 0.95
+  },
+  "hosts_aprovados": 30,
+  "hosts_total": 30,
+  "criptografia": null,
+  "metricas": {
+    "delta_tc_s": null,
+    "lat_autenticador_rtt_avg_ms": null,
+    "lat_rtt_avg_ms": {
+      "amostras": 30,
+      "media": 0.0805,
+      "desvio_padrao": 0.019062058361192718,
+      "min": 0.059,
+      "max": 0.155,
+      "ic_nivel": 0.95,
+      "ic_margem": 0.007117889571310096,
+      "ic_inferior": 0.0733821104286899,
+      "ic_superior": 0.0876178895713101
+    },
+    "throughput_mbps": {
+      "amostras": 30,
+      "media": 89624.8597635,
+      "desvio_padrao": 2442.8747652000357,
+      "min": 87587.751732,
+      "max": 102041.188203,
+      "ic_nivel": 0.95,
+      "ic_margem": 912.1844286571555,
+      "ic_inferior": 88712.67533484285,
+      "ic_superior": 90537.04419215716
+    }
+  }
+}
